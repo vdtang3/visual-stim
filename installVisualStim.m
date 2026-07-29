@@ -22,17 +22,33 @@ fprintf('\nVisual stimulation package setup\n');
 fprintf('================================\n\n');
 
 %% Psychtoolbox
-% Selection is deliberately explicit. Do not infer an installation from the
-% existing MATLAB path: the experimenter chooses the version used here.
-uiwait(msgbox({ ...
-    'Select the Psychtoolbox installation folder.', ...
-    'The selected folder must contain PsychDefaultSetup.m, either', ...
-    'directly or in one of its subfolders.'}, ...
-    'Select Psychtoolbox', 'modal'));
-psychtoolboxPath = uigetdir(pwd, 'Select the Psychtoolbox folder');
-if isequal(psychtoolboxPath, 0)
-    error('vstim:InstallCancelled', ...
-        'Installation cancelled before selecting Psychtoolbox.')
+% Reuse the installation already selected by MATLAB when possible. This is
+% especially useful on shared acquisition computers where Psychtoolbox is
+% centrally managed. Ask for a folder only when it is not currently visible.
+existingSetupFile = which('PsychDefaultSetup');
+psychtoolboxAutoDetected = ~isempty(existingSetupFile);
+if psychtoolboxAutoDetected
+    setupDirectory = fileparts(existingSetupFile);
+    [setupParent, setupFolderName] = fileparts(setupDirectory);
+    if strcmpi(setupFolderName, 'PsychBasic')
+        psychtoolboxPath = setupParent;
+    else
+        psychtoolboxPath = setupDirectory;
+    end
+    fprintf('Using Psychtoolbox already on the MATLAB path: %s\n\n', ...
+        psychtoolboxPath);
+else
+    uiwait(msgbox({ ...
+        'Psychtoolbox was not found on the current MATLAB path.', ...
+        'Select the Psychtoolbox installation folder.', ...
+        'The selected folder must contain PsychDefaultSetup.m, either', ...
+        'directly or in one of its subfolders.'}, ...
+        'Select Psychtoolbox', 'modal'));
+    psychtoolboxPath = uigetdir(pwd, 'Select the Psychtoolbox folder');
+    if isequal(psychtoolboxPath, 0)
+        error('vstim:InstallCancelled', ...
+            'Installation cancelled before selecting Psychtoolbox.')
+    end
 end
 setupMatches = dir(fullfile(psychtoolboxPath, '**', 'PsychDefaultSetup.m'));
 screenMatches = dir(fullfile(psychtoolboxPath, '**', 'Screen.*'));
@@ -42,7 +58,7 @@ if isempty(setupMatches) || isempty(screenMatches)
         ['The selected folder does not provide PsychDefaultSetup and Screen. ' ...
          'Select the top-level Psychtoolbox folder.'])
 end
-addpath(genpath(psychtoolboxPath), '-begin');
+vstim.addPsychtoolboxPath(psychtoolboxPath);
 
 % A source checkout can contain PsychDefaultSetup and Screen while still
 % missing platform-specific runtime or licensing components. Confirm that
@@ -79,7 +95,7 @@ catch firstOpenGLError
     SetupPsychtoolbox;
     clear directoryCleanup
     cd(previousDirectory);
-    addpath(genpath(psychtoolboxPath), '-begin');
+    vstim.addPsychtoolboxPath(psychtoolboxPath);
 
     try
         AssertOpenGL;
@@ -259,6 +275,7 @@ installation.projectRoot = string(projectRoot);
 installation.platform = string(computer);
 installation.matlabRelease = string(version('-release'));
 installation.psychtoolboxPath = string(psychtoolboxPath);
+installation.psychtoolboxAutoDetected = psychtoolboxAutoDetected;
 installation.display.screenNumber = screenNumber;
 installation.display.monitorWidthCm = monitorWidthCm;
 installation.display.monitorHeightCm = monitorHeightCm;
@@ -305,7 +322,7 @@ clear cleanup
 % Persist package and Psychtoolbox paths when MATLAB permits it. The JSON
 % configuration remains valid even if savepath is unavailable.
 addpath(projectRoot);
-addpath(genpath(psychtoolboxPath));
+vstim.addPsychtoolboxPath(psychtoolboxPath);
 addpath(genpath(vendorRoot));
 addpath(projectRoot,'-begin');
 pathStatus = savepath;

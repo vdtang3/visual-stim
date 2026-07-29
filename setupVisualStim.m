@@ -10,7 +10,6 @@ if isempty(fieldnames(installation))
     error('vstim:NotInstalled', ...
         'No installation configuration found. Run installVisualStim first.')
 end
-addpath(genpath(char(installation.psychtoolboxPath)));
 vendorRoot = fullfile(projectRoot,'vendor','in_vivo_patch');
 addpath(genpath(vendorRoot));
 addpath(projectRoot,'-begin');

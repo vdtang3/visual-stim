@@ -29,8 +29,10 @@ elseif ispc && ~isfield(installation,'platform') && ...
     return
 end
 if isfield(installation, 'psychtoolboxPath') && ...
-        isfolder(installation.psychtoolboxPath) && isempty(which('PsychDefaultSetup'))
-    addpath(genpath(installation.psychtoolboxPath));
+        isfolder(installation.psychtoolboxPath)
+    % Reapply this even when Psychtoolbox is already visible: older Windows
+    % installations require MatlabWindowsFilesR2007a to precede PsychBasic.
+    vstim.addPsychtoolboxPath(installation.psychtoolboxPath);
 end
 vendorRoot = fullfile(projectRoot,'vendor','in_vivo_patch');
 if isfolder(vendorRoot)

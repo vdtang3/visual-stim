@@ -19,8 +19,10 @@ cd('C:\path\to\harnett_in_vivo_patch')  % use the actual package folder
 installVisualStim
 ```
 
-The installer selects and validates Psychtoolbox, activates the bundled
-in-vivo-patch analysis functions, then configures the monitor, stimulus
+If Psychtoolbox is already on MATLAB's path, the installer detects and reuses
+it without showing a folder chooser. Otherwise, it asks the experimenter to
+select the Psychtoolbox folder. It then validates Psychtoolbox, activates the
+bundled in-vivo-patch analysis functions, and configures the monitor, stimulus
 screen, optional Arduino TTL output, and default output directory.
 Settings are saved in the readable file `config/installation.json`.
 
@@ -264,3 +266,8 @@ Keyboard MEX errors that occur after presentation has started are handled the
 same way: the queue falls back to polling, and polling failure disables only
 keyboard input. Errors from `Screen`, `GetSecs`, or `WaitSecs` remain fatal
 because those components are required for valid visual timing.
+
+Package startup also corrects the path layout used by older Windows
+Psychtoolbox releases: the platform-specific `MatlabWindowsFilesR2007a`
+directory is promoted ahead of `PsychBasic`, preventing placeholder files
+such as `Screen.m` from shadowing `Screen.mexw64`.
