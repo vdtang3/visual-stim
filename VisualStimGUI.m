@@ -259,7 +259,7 @@ end
             runButton.Enable = 'off';
             previewButton.Enable = 'off';
             statusLabel.Text = string(detection.message) + ...
-                " — Presenting stimulus; Escape aborts safely";
+                " — Presenting; Escape aborts when keyboard access is available";
             statusLabel.FontColor = [0.75 0.35 0];
             drawnow;
             runData = vstim.runProtocol(cfg);

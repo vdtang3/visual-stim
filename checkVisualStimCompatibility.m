@@ -26,8 +26,24 @@ addCheck("PsychDefaultSetup",~isempty(which('PsychDefaultSetup')),"FAIL", ...
     "Psychtoolbox must be selected with installVisualStim.");
 addCheck("Psychtoolbox Screen",~isempty(which('Screen')),"FAIL", ...
     "A platform-compatible Psychtoolbox Screen MEX is required.");
-addCheck("Psychtoolbox keyboard",~isempty(which('KbCheck')),"FAIL", ...
-    "KbCheck supplies the Escape safety control.");
+keyboardPresent = ~isempty(which('KbCheck'));
+keyboardAvailable = false;
+keyboardDetail = "KbCheck is missing; Escape abort will be disabled.";
+if keyboardPresent
+    try
+        [keyboardAvailable, keyboardDiagnostic] = ...
+            vstim.checkKeyboardAccess;
+        if keyboardAvailable
+            keyboardDetail = "Escape safety control is available.";
+        else
+            keyboardDetail = "Keyboard access failed; stimuli can run on " + ...
+                "Windows with Escape abort disabled. " + keyboardDiagnostic;
+        end
+    catch keyboardError
+        keyboardDetail = string(keyboardError.message);
+    end
+end
+addCheck("Psychtoolbox keyboard",keyboardAvailable,"WARN",keyboardDetail);
 vendorRoot = fullfile(projectRoot,'vendor','in_vivo_patch');
 addpath(genpath(vendorRoot));
 addCheck("Bundled WaveSurfer loadws",~isempty(which('loadws')),"FAIL", ...

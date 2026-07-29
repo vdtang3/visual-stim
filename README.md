@@ -248,3 +248,13 @@ preprocessing, TTL alignment, and RF recovery end to end.
 
 The sequence generators do not require Psychtoolbox and can be tested on an
 analysis computer.
+
+### Windows keyboard-access fallback
+
+If Psychtoolbox cannot initialize keyboard access on Windows, installation
+and stimulus presentation continue with keyboard input disabled. The run log
+records `runData.display.keyboardInputMode = "disabled_unavailable"` and the
+Psychtoolbox diagnostic. Escape cannot abort a run in this mode, so use short
+test runs first and allow the finite stimulus sequence to complete. Keyboard
+permission failures on macOS remain fatal because they are normally resolved
+by granting MATLAB Input Monitoring access.

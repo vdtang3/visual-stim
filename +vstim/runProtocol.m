@@ -10,9 +10,10 @@ if isempty(which('PsychDefaultSetup')) || isempty(which('Screen'))
         ['Psychtoolbox is not available on the MATLAB path. Run ' ...
          'installVisualStim once, then reopen the GUI.'])
 end
-% Test keyboard access before opening a fullscreen window. Escape is the
-% experimenter's safe abort control.
-vstim.checkKeyboardAccess;
+% Test keyboard access before opening a fullscreen window. On Windows, a
+% known PsychHID failure disables Escape abort support but does not prevent
+% stimulus presentation.
+[keyboardAvailable, keyboardDiagnostic] = vstim.checkKeyboardAccess;
 if ~exist(cfg.session.outputDirectory, 'dir')
     mkdir(cfg.session.outputDirectory);
 end
@@ -39,6 +40,7 @@ win = [];
 ttl = [];
 keyboardQueueCreated = false;
 keyboardFallbackPolling = false;
+escapeKey = [];
 try
     screens = Screen('Screens');
     if isempty(cfg.display.screenNumber)
@@ -102,6 +104,8 @@ try
         cfg.display.geometryCalibrationFile;
     runData.display.geometry = rmfield(geometry, ...
         {'degToPxX', 'degToPxY', 'sizeDegToPx'});
+    runData.display.keyboardAccessAvailable = keyboardAvailable;
+    runData.display.keyboardDiagnostic = keyboardDiagnostic;
     if any(cfg.protocol == ["Fast Gabor tiling", "Targeted Gabor grid", ...
             "Gabor + inverse stimuli"])
         pxPerDeg = geometry.pixelsPerDegAtCenter;
@@ -167,36 +171,57 @@ try
     runData.sync.endedLow = false;
 
     ttl = vstim.TTLController(cfg.sync);
-    escapeKey = KbName('ESCAPE');
-    escapeKeys = zeros(1,256);
-    escapeKeys(escapeKey) = 1;
-    % KbCheck can synchronously reinitialize PsychHID and has produced
-    % 0.2-0.8 second stalls inside otherwise on-time stimulus runs. A
-    % background keyboard queue moves that work before presentation and
-    % makes per-frame Escape checks nonblocking.
-    try
-        KbQueueCreate([],escapeKeys);
-        keyboardQueueCreated = true;
-        KbQueueStart;
-        KbQueueFlush;
-        KbQueueCheck; % Prime before the first stimulus flip.
-        runData.display.keyboardInputMode = "asynchronous_queue";
-    catch keyboardQueueError
-        % Some older/platform-specific Psychtoolbox installations cannot
-        % create a queue. Prime KbCheck before presentation so any HID
-        % initialization stall occurs while the screen is still gray, then
-        % poll only at 10 Hz.
+    if keyboardAvailable
+        escapeKey = KbName('ESCAPE');
+        escapeKeys = zeros(1,256);
+        escapeKeys(escapeKey) = 1;
+        % KbCheck can synchronously reinitialize PsychHID and has produced
+        % 0.2-0.8 second stalls inside otherwise on-time stimulus runs. A
+        % background keyboard queue moves that work before presentation and
+        % makes per-frame Escape checks nonblocking.
         try
-            KbQueueRelease;
-        catch
+            KbQueueCreate([],escapeKeys);
+            KbQueueStart;
+            KbQueueFlush;
+            KbQueueCheck; % Prime before the first stimulus flip.
+            keyboardQueueCreated = true;
+            runData.display.keyboardInputMode = "asynchronous_queue";
+        catch keyboardQueueError
+            keyboardQueueCreated = false;
+            % Some older/platform-specific Psychtoolbox installations cannot
+            % create a queue. Prime KbCheck before presentation so any HID
+            % initialization stall occurs while the screen is still gray,
+            % then poll only at 10 Hz. If that also fails on Windows,
+            % presentation continues without keyboard input.
+            try
+                KbQueueRelease;
+            catch
+            end
+            try
+                clear KbCheck
+                KbCheck;
+                keyboardFallbackPolling = true;
+                keyboardPollStride = max(1,round(frameRate/10));
+                runData.display.keyboardInputMode = ...
+                    "primed_10_Hz_polling";
+                runData.display.keyboardQueueWarning = ...
+                    string(keyboardQueueError.message);
+            catch keyboardPollingError
+                if ~ispc
+                    rethrow(keyboardPollingError)
+                end
+                keyboardAvailable = false;
+                runData.display.keyboardAccessAvailable = false;
+                runData.display.keyboardInputMode = ...
+                    "disabled_unavailable";
+                runData.display.keyboardDiagnostic = ...
+                    string(keyboardPollingError.message);
+                runData.display.keyboardQueueWarning = ...
+                    string(keyboardQueueError.message);
+            end
         end
-        clear KbCheck
-        KbCheck;
-        keyboardFallbackPolling = true;
-        keyboardPollStride = max(1,round(frameRate/10));
-        runData.display.keyboardInputMode = "primed_10_Hz_polling";
-        runData.display.keyboardQueueWarning = ...
-            string(keyboardQueueError.message);
+    else
+        runData.display.keyboardInputMode = "disabled_unavailable";
     end
     vbl = Screen('Flip', win);
     flipImmediatelyAfterISI = false;
