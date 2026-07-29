@@ -1,0 +1,382 @@
+function runData = runProtocol(cfg)
+%RUNPROTOCOL Generate and present one complete Psychtoolbox experiment.
+% WaveSurfer should already be acquiring. The function always attempts to
+% leave the Arduino TTL low and saves partial data after an abort or error.
+
+cfg = vstim.normalizeDisplayGeometry(cfg);
+vstim.validateConfig(cfg);
+if isempty(which('PsychDefaultSetup')) || isempty(which('Screen'))
+    error('vstim:PsychtoolboxNotConfigured', ...
+        ['Psychtoolbox is not available on the MATLAB path. Run ' ...
+         'installVisualStim once, then reopen the GUI.'])
+end
+% Test keyboard access before opening a fullscreen window. Escape is the
+% experimenter's safe abort control.
+vstim.checkKeyboardAccess;
+if ~exist(cfg.session.outputDirectory, 'dir')
+    mkdir(cfg.session.outputDirectory);
+end
+
+runData = struct();
+runData.params = cfg;
+runData.status.startedAt = datetime('now');
+runData.status.completed = false;
+runData.status.aborted = false;
+runData.status.message = "";
+runData.display.platformTimingWarning = vstim.platformTimingWarning;
+if strlength(runData.display.platformTimingWarning) > 0
+    warning('vstim:PlatformTimingRisk','%s', ...
+        runData.display.platformTimingWarning)
+end
+
+PsychDefaultSetup(2);
+KbName('UnifyKeyNames');
+Screen('Preference', 'SkipSyncTests', double(cfg.display.skipSyncTests));
+Screen('Preference', 'VisualDebugLevel', 1);
+Screen('Preference', 'Verbosity', 1);
+
+win = [];
+ttl = [];
+keyboardQueueCreated = false;
+keyboardFallbackPolling = false;
+try
+    screens = Screen('Screens');
+    if isempty(cfg.display.screenNumber)
+        screenNumber = max(screens);
+    else
+        screenNumber = cfg.display.screenNumber;
+    end
+
+    screenRect = Screen('Rect', screenNumber);
+    cfg.display.resolutionPx = [RectWidth(screenRect), RectHeight(screenRect)];
+
+    % Sparse-noise constraint solving is independent of measured refresh
+    % rate. Generate it before opening fullscreen, but after querying the
+    % real pixel resolution needed for square-pixel grid geometry.
+    prebuiltSequence = [];
+    if cfg.protocol == "Sparse noise"
+        prebuiltSequence = vstim.generateSequence(cfg, 60);
+        runData.params = cfg;
+    end
+
+    PsychImaging('PrepareConfiguration');
+    if cfg.display.geometryCorrectionEnabled
+        calibrationFile = char(cfg.display.geometryCalibrationFile);
+        if ~isfile(calibrationFile)
+            error('vstim:MissingGeometryCalibration', ...
+                'Psychtoolbox geometry calibration file not found: %s', ...
+                calibrationFile)
+        end
+        PsychImaging('AddTask', 'AllViews', 'GeometryCorrection', ...
+            calibrationFile);
+    end
+    [win, winRect] = PsychImaging('OpenWindow', screenNumber, ...
+        cfg.display.backgroundGray);
+    HideCursor;
+    Priority(MaxPriority(win));
+    % One alpha-compositing mode is used for the whole run. Gabor contrast
+    % and inverse masking therefore use the same aperture alpha profile,
+    % without changing OpenGL blend state on individual frames.
+    Screen('BlendFunction', win, 'GL_SRC_ALPHA', ...
+        'GL_ONE_MINUS_SRC_ALPHA');
+    ifi = Screen('GetFlipInterval', win);
+    frameRate = 1/ifi;
+    geometry = vstim.visualGeometry(winRect, cfg);
+    if cfg.protocol == "Sparse noise"
+        sequence = prebuiltSequence;
+        sequence.nominalFrameRate = frameRate;
+        sequence.trials.durationSec(:) = ...
+            round(cfg.stimulus.patternDurationSec*frameRate)/frameRate;
+        sequence.estimatedDurationSec = sum(sequence.trials.durationSec + ...
+            sequence.trials.interStimulusSec);
+    else
+        sequence = vstim.generateSequence(cfg, frameRate);
+    end
+    runData.sequence = sequence;
+    runData.display.ifiSec = ifi;
+    runData.display.measuredFrameRate = frameRate;
+    runData.display.windowRect = winRect;
+    runData.display.geometryCorrectionEnabled = ...
+        cfg.display.geometryCorrectionEnabled;
+    runData.display.geometryCalibrationFile = ...
+        cfg.display.geometryCalibrationFile;
+    runData.display.geometry = rmfield(geometry, ...
+        {'degToPxX', 'degToPxY', 'sizeDegToPx'});
+    if any(cfg.protocol == ["Fast Gabor tiling", "Targeted Gabor grid", ...
+            "Gabor + inverse stimuli"])
+        pxPerDeg = geometry.pixelsPerDegAtCenter;
+        geometry.aperture = vstim.circularApertureGeometry( ...
+            cfg.stimulus.diameterDeg, cfg.stimulus.edgeBlurDeg, pxPerDeg);
+        % The transition spans edgeBlurDeg and is centered on the nominal
+        % radius diameterDeg/2, so diameterDeg is the 50% contour.
+        % A 0.5 premultiplier makes the requested value correspond to
+        % conventional Michelson contrast.
+        geometry.gaborTexture = ...
+            CreateProceduralSmoothedApertureSineGrating(win, ...
+            geometry.aperture.supportDiameterPx, ...
+            geometry.aperture.supportDiameterPx, ...
+            [cfg.display.backgroundGray ...
+            cfg.display.backgroundGray cfg.display.backgroundGray 1], ...
+            geometry.aperture.outerRadiusPx, 0.5, ...
+            geometry.aperture.edgeBlurPx, 1, 1);
+        runData.display.gaborAperture = geometry.aperture;
+        if cfg.protocol == "Gabor + inverse stimuli"
+            geometry.inverseAperture = vstim.circularCoreApertureGeometry( ...
+                cfg.stimulus.inverseDiameterDeg, ...
+                cfg.stimulus.edgeBlurDeg, pxPerDeg);
+            geometry.inverseTexture = ...
+                CreateProceduralSmoothedApertureSineGrating(win, ...
+                geometry.inverseAperture.supportDiameterPx, ...
+                geometry.inverseAperture.supportDiameterPx, ...
+                [cfg.display.backgroundGray cfg.display.backgroundGray ...
+                cfg.display.backgroundGray 1], ...
+                geometry.inverseAperture.outerRadiusPx, 0.5, ...
+                geometry.inverseAperture.edgeBlurPx, 1, 1);
+            runData.display.inverseAperture = geometry.inverseAperture;
+            runData.display.inverseDiameterDefinition = ...
+                "fully gray core; edge blur extends outward";
+            geometry.fullFieldGratingTexture = CreateProceduralSineGrating( ...
+                win, RectWidth(winRect), RectHeight(winRect), ...
+                [cfg.display.backgroundGray cfg.display.backgroundGray ...
+                cfg.display.backgroundGray 1], inf, 0.5);
+            geometry.fullFieldGratingRect = winRect;
+            geometry.fullFieldRotationMode = ...
+                kPsychUseTextureMatrixForRotation;
+        end
+    end
+
+    nTrials = height(sequence.trials);
+    presentation = table((1:nTrials)', nan(nTrials,1), nan(nTrials,1), ...
+        nan(nTrials,1), nan(nTrials,1), zeros(nTrials,1), false(nTrials,1), ...
+        strings(nTrials,1), 'VariableNames', {'trialIndex', 'flipOnsetSec', ...
+        'flipOffsetSec', 'ttlHighSec', 'ttlLowSec', 'framesPresented', ...
+        'completed', 'message'});
+    presentation.frameFlipTimesSec = cell(nTrials, 1);
+    presentation.frameValues = cell(nTrials, 1);
+    presentation.missedFlipCount = zeros(nTrials, 1);
+    presentation.maximumMissSec = zeros(nTrials, 1);
+    presentation.longFrameIntervalCount = zeros(nTrials, 1);
+    presentation.estimatedDroppedRefreshCount = zeros(nTrials, 1);
+    presentation.maximumFrameIntervalSec = zeros(nTrials, 1);
+    presentation.actualInterStimulusSec = nan(nTrials, 1);
+    runData.presentation = presentation;
+    runData.sync.mode = sequence.ttlMode;
+    runData.sync.port = cfg.sync.port;
+    runData.sync.baudRate = cfg.sync.baudRate;
+    runData.sync.startedLow = true;
+    runData.sync.endedLow = false;
+
+    ttl = vstim.TTLController(cfg.sync);
+    escapeKey = KbName('ESCAPE');
+    escapeKeys = zeros(1,256);
+    escapeKeys(escapeKey) = 1;
+    % KbCheck can synchronously reinitialize PsychHID and has produced
+    % 0.2-0.8 second stalls inside otherwise on-time stimulus runs. A
+    % background keyboard queue moves that work before presentation and
+    % makes per-frame Escape checks nonblocking.
+    try
+        KbQueueCreate([],escapeKeys);
+        keyboardQueueCreated = true;
+        KbQueueStart;
+        KbQueueFlush;
+        KbQueueCheck; % Prime before the first stimulus flip.
+        runData.display.keyboardInputMode = "asynchronous_queue";
+    catch keyboardQueueError
+        % Some older/platform-specific Psychtoolbox installations cannot
+        % create a queue. Prime KbCheck before presentation so any HID
+        % initialization stall occurs while the screen is still gray, then
+        % poll only at 10 Hz.
+        try
+            KbQueueRelease;
+        catch
+        end
+        clear KbCheck
+        KbCheck;
+        keyboardFallbackPolling = true;
+        keyboardPollStride = max(1,round(frameRate/10));
+        runData.display.keyboardInputMode = "primed_10_Hz_polling";
+        runData.display.keyboardQueueWarning = ...
+            string(keyboardQueueError.message);
+    end
+    vbl = Screen('Flip', win);
+    flipImmediatelyAfterISI = false;
+
+    for t = 1:nTrials
+        tr = sequence.trials(t,:);
+        nFrames = max(1, round(tr.durationSec/ifi));
+        flipTimes = nan(nFrames, 1);
+        frameValues = nan(nFrames, 1);
+        missedDeadlines = zeros(nFrames, 1);
+        trialDisplayOnset = NaN;
+
+        for frame = 1:nFrames
+            if frame == 1 || isnan(trialDisplayOnset)
+                elapsed = 0;
+            else
+                % Predict the next displayed frame from the most recent
+                % actual VBL timestamp. If a deadline was missed, phase
+                % catches up on the following frame instead of permanently
+                % slowing the drifting grating.
+                elapsed = max(0, vbl + ifi - trialDisplayOnset);
+            end
+            Screen('FillRect', win, cfg.display.backgroundGray);
+            info = vstim.drawStimulus(win, geometry, cfg, sequence, t, frame, elapsed);
+            if frame == 1 && flipImmediatelyAfterISI
+                % The explicit ISI wait has already elapsed. Do not reuse
+                % the gray flip's old vbl timestamp.
+                requestedFlip = 0;
+                flipImmediatelyAfterISI = false;
+            else
+                requestedFlip = vbl + 0.5*ifi;
+            end
+            [vbl, stimulusOnset, ~, missed] = ...
+                Screen('Flip', win, requestedFlip);
+            if frame == 1
+                trialDisplayOnset = stimulusOnset;
+                runData.presentation.flipOnsetSec(t) = stimulusOnset;
+                if t > 1 && ...
+                        ~isnan(runData.presentation.flipOffsetSec(t-1))
+                    runData.presentation.actualInterStimulusSec(t-1) = ...
+                        stimulusOnset - ...
+                        runData.presentation.flipOffsetSec(t-1);
+                end
+                % For a zero-ISI sequence, the next pattern's first flip is
+                % the preceding pattern's actual display offset.
+                if t > 1 && sequence.trials.interStimulusSec(t-1) == 0
+                    runData.presentation.flipOffsetSec(t-1) = stimulusOnset;
+                end
+                ttl.high();
+                runData.presentation.ttlHighSec(t) = GetSecs;
+                if sequence.ttlMode == "onset_pulse"
+                    WaitSecs(cfg.sync.onsetPulseSec);
+                    ttl.low();
+                    runData.presentation.ttlLowSec(t) = GetSecs;
+                end
+            end
+            flipTimes(frame) = stimulusOnset;
+            missedDeadlines(frame) = max(0, missed);
+            if isfield(info, 'centerDeg')
+                frameValues(frame) = info.centerDeg;
+            end
+            runData.presentation.framesPresented(t) = frame;
+
+            if keyboardQueueCreated
+                [keyPressed, firstPress] = KbQueueCheck;
+                if keyPressed && firstPress(escapeKey) > 0
+                    error('vstim:UserAbort', ...
+                        'User aborted with Escape.')
+                end
+            elseif keyboardFallbackPolling && ...
+                    mod(frame-1,keyboardPollStride) == 0
+                [keyPressed,~,keyCode] = KbCheck;
+                if keyPressed && keyCode(escapeKey)
+                    error('vstim:UserAbort', ...
+                        'User aborted with Escape.')
+                end
+            end
+        end
+
+        if tr.interStimulusSec > 0 || t == nTrials
+            Screen('FillRect', win, cfg.display.backgroundGray);
+            [vbl, offsetTime] = Screen('Flip', win, vbl + 0.5*ifi);
+            runData.presentation.flipOffsetSec(t) = offsetTime;
+            if sequence.ttlMode == "epoch"
+                ttl.low();
+                runData.presentation.ttlLowSec(t) = GetSecs;
+            end
+        end
+        runData.presentation.frameFlipTimesSec{t} = flipTimes;
+        runData.presentation.frameValues{t} = frameValues;
+        runData.presentation.missedFlipCount(t) = ...
+            sum(missedDeadlines > 0);
+        runData.presentation.maximumMissSec(t) = max(missedDeadlines);
+        frameIntervals = diff(flipTimes);
+        if ~isempty(frameIntervals)
+            runData.presentation.longFrameIntervalCount(t) = ...
+                sum(frameIntervals > 1.5*ifi);
+            runData.presentation.estimatedDroppedRefreshCount(t) = ...
+                sum(max(0,round(frameIntervals/ifi)-1));
+            runData.presentation.maximumFrameIntervalSec(t) = ...
+                max(frameIntervals);
+        end
+        runData.presentation.completed(t) = true;
+
+        if tr.interStimulusSec > 0 && t < nTrials
+            % Keep the already-flipped gray frame visible for at least the
+            % requested interval. The next trial flips immediately after
+            % this wait and does not schedule against the now-stale vbl.
+            WaitSecs('UntilTime', ...
+                runData.presentation.flipOffsetSec(t) + ...
+                tr.interStimulusSec);
+            flipImmediatelyAfterISI = true;
+        end
+    end
+
+    runData.display.screenReportedMissedFlipCount = ...
+        sum(runData.presentation.missedFlipCount);
+    runData.display.longFrameIntervalCount = ...
+        sum(runData.presentation.longFrameIntervalCount);
+    runData.display.estimatedDroppedRefreshCount = ...
+        sum(runData.presentation.estimatedDroppedRefreshCount);
+    totalPresentedFrames = sum(runData.presentation.framesPresented);
+    runData.display.longFrameIntervalFraction = ...
+        runData.display.longFrameIntervalCount / ...
+        max(1,totalPresentedFrames);
+    runData.display.maximumMissSec = ...
+        max(runData.presentation.maximumMissSec);
+    runData.display.maximumFrameIntervalSec = ...
+        max(runData.presentation.maximumFrameIntervalSec);
+    runData.status.completed = true;
+    if runData.display.longFrameIntervalCount == 0
+        runData.status.message = ...
+            "Completed normally; no long frame intervals";
+    else
+        runData.status.message = sprintf( ...
+            ['Completed with %d long frame interval(s), approximately %d ' ...
+            'dropped refresh(es) (%.3f%% of frames).'], ...
+            runData.display.longFrameIntervalCount, ...
+            runData.display.estimatedDroppedRefreshCount, ...
+            100*runData.display.longFrameIntervalFraction);
+    end
+catch ME
+    if strcmp(ME.identifier, 'vstim:UserAbort')
+        runData.status.aborted = true;
+        runData.status.message = string(ME.message);
+    else
+        runData.status.message = string(getReport(ME, 'extended', ...
+            'hyperlinks', 'off'));
+    end
+end
+
+if ~isempty(ttl)
+    ttl.low();
+    runData.sync.endedLow = true;
+    delete(ttl);
+end
+if keyboardQueueCreated
+    try
+        KbQueueStop;
+        KbQueueRelease;
+    catch
+    end
+end
+Priority(0);
+ShowCursor;
+if ~isempty(win)
+    Screen('CloseAll');
+end
+
+runData.status.endedAt = datetime('now');
+stamp = string(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
+sweep = string(cfg.session.wavesurferSweep);
+if strlength(sweep) > 0
+    sweep = "_" + sweep;
+end
+filename = cfg.session.filePrefix + sweep + "_" + stamp + ".mat";
+runData.status.savedFile = fullfile(cfg.session.outputDirectory, filename);
+save(runData.status.savedFile, 'runData', '-v7.3');
+
+if ~runData.status.completed && ~runData.status.aborted
+    error('vstim:PresentationFailed', '%s', runData.status.message)
+end
+end

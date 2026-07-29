@@ -1,0 +1,112 @@
+function cfg = loadGuiConfig(filename)
+%LOADGUICONFIG Load a complete GUI configuration file.
+
+if ~isfile(filename)
+    error('vstim:ConfigNotFound', 'Configuration file not found: %s', filename)
+end
+[~,~,extension] = fileparts(filename);
+if strcmpi(extension, '.json')
+    descriptor = jsondecode(fileread(filename));
+    if isfield(descriptor, 'useBuiltInDefaults') && ...
+            descriptor.useBuiltInDefaults
+        cfg = vstim.defaultConfig(string(descriptor.activeProtocol));
+        return
+    end
+    error('vstim:InvalidGuiConfig', ...
+        'JSON file is not a supported visual-stimulus configuration.')
+end
+
+s = load(filename, 'guiConfig');
+if ~isfield(s, 'guiConfig') || ~isfield(s.guiConfig, 'cfg')
+    error('vstim:InvalidGuiConfig', ...
+        'File does not contain a saved visual-stimulus GUI configuration.')
+end
+if isfield(s.guiConfig,'platform') && ...
+        ~strcmpi(string(s.guiConfig.platform),string(computer))
+    error('vstim:ConfigPlatformMismatch', ...
+        ['This configuration was saved on %s and contains machine-specific ' ...
+         'display, serial-port, and folder settings. Use a configuration ' ...
+         'saved on this %s machine.'], ...
+        string(s.guiConfig.platform),string(computer))
+end
+cfg = s.guiConfig.cfg;
+if ispc && ~isfield(s.guiConfig,'platform') && ...
+        (startsWith(string(cfg.sync.port),"/") || ...
+        startsWith(string(cfg.session.outputDirectory),"/"))
+    error('vstim:ConfigPlatformMismatch', ...
+        ['This older configuration contains Unix paths or serial ports. ' ...
+         'Save a new configuration after running installVisualStim on Windows.'])
+end
+
+% Add session fields introduced after this configuration was saved. This
+% keeps newly added controls visible when the GUI autoloads an older file.
+currentDefaults = vstim.defaultConfig(string(cfg.protocol));
+sessionFields = fieldnames(currentDefaults.session);
+for i = 1:numel(sessionFields)
+    name = sessionFields{i};
+    if ~isfield(cfg.session, name)
+        cfg.session.(name) = currentDefaults.session.(name);
+    end
+end
+
+if cfg.protocol == "Fast Gabor tiling"
+    % Migrate configurations saved before drifting Gabors became the
+    % default. Preserve their numeric temporal frequency while replacing
+    % the obsolete counterphase-only field.
+    if isfield(cfg.stimulus, 'counterphaseFrequencyHz') && ...
+            ~isfield(cfg.stimulus, 'temporalFrequencyHz')
+        cfg.stimulus.temporalFrequencyHz = ...
+            cfg.stimulus.counterphaseFrequencyHz;
+    end
+    if isfield(cfg.stimulus, 'counterphaseFrequencyHz')
+        cfg.stimulus = rmfield(cfg.stimulus, 'counterphaseFrequencyHz');
+    end
+    cfg.stimulus.temporalModulation = "drifting";
+    if ~isfield(cfg.stimulus, 'temporalFrequencyHz')
+        cfg.stimulus.temporalFrequencyHz = 2;
+    end
+    % Gaussian-windowed Gabors were replaced by paper-style circular
+    % grating patches with a locally blurred edge.
+    if isfield(cfg.stimulus, 'sigmaDeg')
+        cfg.stimulus = rmfield(cfg.stimulus, 'sigmaDeg');
+    end
+    if isfield(cfg.stimulus, 'aspectRatio')
+        cfg.stimulus = rmfield(cfg.stimulus, 'aspectRatio');
+    end
+    if ~isfield(cfg.stimulus, 'edgeBlurDeg')
+        cfg.stimulus.edgeBlurDeg = 10;
+    end
+end
+if cfg.protocol == "Sparse noise" && ...
+        ~isfield(cfg.stimulus, 'gridCoordinateMode')
+    cfg.stimulus.gridCoordinateMode = "constant_degrees";
+    % The degree-uniform grid has a different aspect ratio from the legacy
+    % pixel grid; a distance of four cannot place six simultaneous tiles
+    % on common monitor geometries.
+    cfg.stimulus.minimumGridDistance = min( ...
+        cfg.stimulus.minimumGridDistance, 3);
+end
+if cfg.protocol == "Gabor + inverse stimuli" && ...
+        ~isfield(cfg.stimulus,'inverseDiameterDeg')
+    % Older configurations used diameterDeg for both apertures.
+    cfg.stimulus.inverseDiameterDeg = cfg.stimulus.diameterDeg;
+end
+if cfg.protocol == "Targeted Gabor grid" && ...
+        isfield(cfg.stimulus, 'centerPixelX')
+    cfg.stimulus.centerAzimuthDeg = cfg.display.azimuthLimitsDeg(1) + ...
+        cfg.stimulus.centerPixelX/cfg.display.resolutionPx(1) * ...
+        diff(cfg.display.azimuthLimitsDeg);
+    cfg.stimulus.centerElevationDeg = cfg.display.elevationLimitsDeg(2) - ...
+        cfg.stimulus.centerPixelY/cfg.display.resolutionPx(2) * ...
+        diff(cfg.display.elevationLimitsDeg);
+    cfg.stimulus.gridSpacingDeg = cfg.stimulus.gridSpacingPx ./ ...
+        cfg.display.resolutionPx .* ...
+        [diff(cfg.display.azimuthLimitsDeg), ...
+        diff(cfg.display.elevationLimitsDeg)];
+    cfg.stimulus = rmfield(cfg.stimulus, ...
+        {'centerPixelX', 'centerPixelY', 'gridSpacingPx'});
+end
+cfg = vstim.normalizeDisplayGeometry(cfg);
+cfg = vstim.clampMappingRegion(cfg);
+vstim.validateConfig(cfg);
+end

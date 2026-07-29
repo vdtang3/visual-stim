@@ -1,0 +1,6 @@
+{
+  "schemaVersion": "1.0.0",
+  "description": "Built-in defaults are provided by vstim.defaultConfig. Timestamped GUI configurations saved in this folder override them on startup.",
+  "activeProtocol": "Moving bars",
+  "useBuiltInDefaults": true
+}

@@ -1,0 +1,11 @@
+.DS_Store
+
+# Machine-specific installation settings
+/config/installation.json
+
+# Timestamped GUI configurations; keep config/gui/default_config.json
+/config/gui/*.mat
+
+# Experiment-generated stimulus run files
+/saved_stim_parameters/*
+!/saved_stim_parameters/.gitkeep
