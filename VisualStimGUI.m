@@ -62,22 +62,27 @@ helpBox = uitextarea(right, 'Editable', 'off', ...
     'Value', protocolHelp(cfg.protocol), 'FontName', 'Menlo');
 helpBox.Layout.Row = 2;
 
-footer = uigridlayout(main, [1 5]);
+footer = uigridlayout(main, [1 6]);
 footer.Layout.Row = 3;
 footer.Layout.Column = [1 2];
-footer.ColumnWidth = {120, 140, 140, '1x', 150};
-uibutton(footer, 'Text', 'Reset defaults', ...
+footer.ColumnWidth = {120, 140, 140, '1x', 150, 150};
+resetButton = uibutton(footer, 'Text', 'Reset defaults', ...
     'ButtonPushedFcn', @resetPressed);
-uibutton(footer, 'Text', 'Save configuration', ...
+saveButton = uibutton(footer, 'Text', 'Save configuration', ...
     'ButtonPushedFcn', @saveConfigPressed);
-uibutton(footer, 'Text', 'Load configuration', ...
+loadButton = uibutton(footer, 'Text', 'Load configuration', ...
     'ButtonPushedFcn', @loadConfigPressed);
 statusLabel = uilabel(footer, 'Text', 'Ready', 'FontColor', [0.2 0.4 0.2]);
 runButton = uibutton(footer, 'Text', 'Run stimulus', ...
     'FontWeight', 'bold', 'BackgroundColor', [0.25 0.55 0.85], ...
     'FontColor', [1 1 1], 'ButtonPushedFcn', @runPressed);
+cancelButton = uibutton(footer, 'Text', 'Cancel run', ...
+    'Enable', 'off', 'FontWeight', 'bold', ...
+    'BackgroundColor', [0.75 0.2 0.2], 'FontColor', [1 1 1], ...
+    'ButtonPushedFcn', @cancelPressed);
 
 regionROI = [];
+cancelRequested = false;
 refreshEditors();
 updateTargetButtons();
 refreshTargetMap();
@@ -256,13 +261,13 @@ end
                 cfg.session.wavesurferSweep = string(detectedSweep);
             end
             fprintf('%s\n', detection.message);
-            runButton.Enable = 'off';
-            previewButton.Enable = 'off';
+            cancelRequested = false;
+            setPresentationControls(true);
             statusLabel.Text = string(detection.message) + ...
-                " — Presenting; Escape aborts when keyboard access is available";
+                " — Presenting; use Cancel run or Escape";
             statusLabel.FontColor = [0.75 0.35 0];
             drawnow;
-            runData = vstim.runProtocol(cfg);
+            runData = vstim.runProtocol(cfg, @isCancelRequested);
             clearDetectionMetadata();
             if runData.status.completed
                 statusLabel.Text = "Completed and saved: " + ...
@@ -281,8 +286,47 @@ end
             statusLabel.FontColor = [0.8 0.1 0.1];
             uialert(fig, ME.message, 'Stimulus error');
         end
-        runButton.Enable = 'on';
-        previewButton.Enable = 'on';
+        setPresentationControls(false);
+    end
+
+    function cancelPressed(~, ~)
+        cancelRequested = true;
+        cancelButton.Enable = 'off';
+        statusLabel.Text = 'Cancellation requested; finishing current display frame...';
+        statusLabel.FontColor = [0.75 0.2 0.2];
+    end
+
+    function requested = isCancelRequested
+        requested = cancelRequested;
+    end
+
+    function setPresentationControls(isRunning)
+        if isRunning
+            runButton.Enable = 'off';
+            cancelButton.Enable = 'on';
+            protocolDropDown.Enable = 'off';
+            previewButton.Enable = 'off';
+            fullDisplayButton.Enable = 'off';
+            resetButton.Enable = 'off';
+            saveButton.Enable = 'off';
+            loadButton.Enable = 'off';
+            stimTable.Enable = 'off';
+            displayTable.Enable = 'off';
+            syncTable.Enable = 'off';
+            sessionTable.Enable = 'off';
+        else
+            runButton.Enable = 'on';
+            cancelButton.Enable = 'off';
+            protocolDropDown.Enable = 'on';
+            resetButton.Enable = 'on';
+            saveButton.Enable = 'on';
+            loadButton.Enable = 'on';
+            stimTable.Enable = 'on';
+            displayTable.Enable = 'on';
+            syncTable.Enable = 'on';
+            sessionTable.Enable = 'on';
+            updateTargetButtons();
+        end
     end
 
     function clearDetectionMetadata()
@@ -382,6 +426,13 @@ end
     end
 
     function closeGUI(~, ~)
+        if strcmp(runButton.Enable, 'off')
+            cancelRequested = true;
+            cancelButton.Enable = 'off';
+            statusLabel.Text = ...
+                'Cancellation requested; the window will remain open until cleanup finishes.';
+            return
+        end
         delete(fig);
     end
 end

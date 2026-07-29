@@ -271,3 +271,10 @@ Package startup also corrects the path layout used by older Windows
 Psychtoolbox releases: the platform-specific `MatlabWindowsFilesR2007a`
 directory is promoted ahead of `PsychBasic`, preventing placeholder files
 such as `Screen.m` from shadowing `Screen.mexw64`.
+
+During presentation, **Cancel run** provides a PsychHID-independent abort
+control. The GUI services this button at 5 Hz, marks the run as aborted,
+forces the Arduino TTL low, closes the Psychtoolbox window, and saves the
+partial run log. The GUI must remain visible on a display that is not covered
+by the fullscreen stimulus. Escape remains available when Psychtoolbox
+keyboard access works.

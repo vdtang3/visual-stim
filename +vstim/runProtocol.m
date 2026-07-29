@@ -1,7 +1,13 @@
-function runData = runProtocol(cfg)
+function runData = runProtocol(cfg, cancelCheckFcn)
 %RUNPROTOCOL Generate and present one complete Psychtoolbox experiment.
 % WaveSurfer should already be acquiring. The function always attempts to
 % leave the Arduino TTL low and saves partial data after an abort or error.
+% cancelCheckFcn is an optional lightweight function returning true when a
+% MATLAB GUI has requested cancellation.
+
+if nargin < 2
+    cancelCheckFcn = [];
+end
 
 cfg = vstim.normalizeDisplayGeometry(cfg);
 vstim.validateConfig(cfg);
@@ -109,6 +115,10 @@ try
     runData.display.keyboardPreflightDiagnostic = ...
         keyboardPreflightDiagnostic;
     runData.display.keyboardDiagnostic = "";
+    runData.display.guiCancelEnabled = ~isempty(cancelCheckFcn);
+    runData.display.guiCancelPollingHz = 5;
+    guiCancelPollStride = max(1, ...
+        round(frameRate/runData.display.guiCancelPollingHz));
     if any(cfg.protocol == ["Fast Gabor tiling", "Targeted Gabor grid", ...
             "Gabor + inverse stimuli"])
         pxPerDeg = geometry.pixelsPerDegAtCenter;
@@ -289,6 +299,19 @@ try
                 frameValues(frame) = info.centerDeg;
             end
             runData.presentation.framesPresented(t) = frame;
+
+            if ~isempty(cancelCheckFcn) && ...
+                    mod(frame-1,guiCancelPollStride) == 0
+                % MATLAB GUI callbacks are not serviced automatically while
+                % this function owns the execution thread. Poll at a low
+                % fixed rate to keep cancellation responsive while limiting
+                % disturbance to visual timing.
+                drawnow limitrate
+                if cancelCheckFcn()
+                    error('vstim:UserAbort', ...
+                        'User canceled from VisualStimGUI.')
+                end
+            end
 
             if keyboardQueueCreated
                 try
