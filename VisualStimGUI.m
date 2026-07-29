@@ -78,11 +78,9 @@ runButton = uibutton(footer, 'Text', 'Run stimulus', ...
     'FontColor', [1 1 1], 'ButtonPushedFcn', @runPressed);
 cancelButton = uibutton(footer, 'Text', 'Cancel run', ...
     'Enable', 'off', 'FontWeight', 'bold', ...
-    'BackgroundColor', [0.75 0.2 0.2], 'FontColor', [1 1 1], ...
-    'ButtonPushedFcn', @cancelPressed);
+    'BackgroundColor', [0.75 0.2 0.2], 'FontColor', [1 1 1]);
 
 regionROI = [];
-cancelRequested = false;
 refreshEditors();
 updateTargetButtons();
 refreshTargetMap();
@@ -261,13 +259,12 @@ end
                 cfg.session.wavesurferSweep = string(detectedSweep);
             end
             fprintf('%s\n', detection.message);
-            cancelRequested = false;
             setPresentationControls(true);
             statusLabel.Text = string(detection.message) + ...
                 " — Presenting; use Cancel run or Escape";
             statusLabel.FontColor = [0.75 0.35 0];
             drawnow;
-            runData = vstim.runProtocol(cfg, @isCancelRequested);
+            runData = vstim.runProtocol(cfg, true);
             clearDetectionMetadata();
             if runData.status.completed
                 statusLabel.Text = "Completed and saved: " + ...
@@ -287,17 +284,6 @@ end
             uialert(fig, ME.message, 'Stimulus error');
         end
         setPresentationControls(false);
-    end
-
-    function cancelPressed(~, ~)
-        cancelRequested = true;
-        cancelButton.Enable = 'off';
-        statusLabel.Text = 'Cancellation requested; finishing current display frame...';
-        statusLabel.FontColor = [0.75 0.2 0.2];
-    end
-
-    function requested = isCancelRequested
-        requested = cancelRequested;
     end
 
     function setPresentationControls(isRunning)
@@ -427,10 +413,8 @@ end
 
     function closeGUI(~, ~)
         if strcmp(runButton.Enable, 'off')
-            cancelRequested = true;
-            cancelButton.Enable = 'off';
             statusLabel.Text = ...
-                'Cancellation requested; the window will remain open until cleanup finishes.';
+                'A run is active. Click the red Cancel run button first.';
             return
         end
         delete(fig);

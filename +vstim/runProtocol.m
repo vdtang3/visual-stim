@@ -1,13 +1,14 @@
-function runData = runProtocol(cfg, cancelCheckFcn)
+function runData = runProtocol(cfg, guiMouseCancelEnabled)
 %RUNPROTOCOL Generate and present one complete Psychtoolbox experiment.
 % WaveSurfer should already be acquiring. The function always attempts to
 % leave the Arduino TTL low and saves partial data after an abort or error.
-% cancelCheckFcn is an optional lightweight function returning true when a
-% MATLAB GUI has requested cancellation.
+% guiMouseCancelEnabled uses raw mouse-button polling through Screen so the
+% GUI cancel control does not require MATLAB callbacks during presentation.
 
 if nargin < 2
-    cancelCheckFcn = [];
+    guiMouseCancelEnabled = false;
 end
+guiMouseCancelEnabled = logical(guiMouseCancelEnabled);
 
 cfg = vstim.normalizeDisplayGeometry(cfg);
 vstim.validateConfig(cfg);
@@ -81,7 +82,13 @@ try
     end
     [win, winRect] = PsychImaging('OpenWindow', screenNumber, ...
         cfg.display.backgroundGray);
-    HideCursor;
+    if guiMouseCancelEnabled
+        % Keep the pointer visible on the separate GUI display so the red
+        % Cancel run control remains easy to target.
+        ShowCursor;
+    else
+        HideCursor;
+    end
     Priority(MaxPriority(win));
     % One alpha-compositing mode is used for the whole run. Gabor contrast
     % and inverse masking therefore use the same aperture alpha profile,
@@ -115,8 +122,10 @@ try
     runData.display.keyboardPreflightDiagnostic = ...
         keyboardPreflightDiagnostic;
     runData.display.keyboardDiagnostic = "";
-    runData.display.guiCancelEnabled = ~isempty(cancelCheckFcn);
+    runData.display.guiCancelEnabled = guiMouseCancelEnabled;
     runData.display.guiCancelPollingHz = 5;
+    runData.display.guiCancelInputMode = "disabled";
+    runData.display.guiCancelDiagnostic = "";
     guiCancelPollStride = max(1, ...
         round(frameRate/runData.display.guiCancelPollingHz));
     if any(cfg.protocol == ["Fast Gabor tiling", "Targeted Gabor grid", ...
@@ -238,6 +247,21 @@ try
     else
         runData.display.keyboardInputMode = "disabled_unavailable";
     end
+
+    mouseCancelAvailable = false;
+    mouseButtonWasDown = false;
+    if guiMouseCancelEnabled
+        try
+            [~,~,mouseButtons] = GetMouse;
+            mouseButtonWasDown = any(mouseButtons);
+            mouseCancelAvailable = true;
+            runData.display.guiCancelInputMode = ...
+                "screen_mex_global_mouse_press";
+        catch mouseCancelError
+            runData.display.guiCancelDiagnostic = ...
+                string(mouseCancelError.message);
+        end
+    end
     vbl = Screen('Flip', win);
     flipImmediatelyAfterISI = false;
 
@@ -300,16 +324,30 @@ try
             end
             runData.presentation.framesPresented(t) = frame;
 
-            if ~isempty(cancelCheckFcn) && ...
+            if mouseCancelAvailable && ...
                     mod(frame-1,guiCancelPollStride) == 0
-                % MATLAB GUI callbacks are not serviced automatically while
-                % this function owns the execution thread. Poll at a low
-                % fixed rate to keep cancellation responsive while limiting
-                % disturbance to visual timing.
-                drawnow limitrate
-                if cancelCheckFcn()
-                    error('vstim:UserAbort', ...
-                        'User canceled from VisualStimGUI.')
+                % On Windows, GetMouse reads button state through Screen's
+                % GetMouseHelper and does not require PsychHID or MATLAB's
+                % GUI callback queue. A new mouse press is treated as the
+                % experimenter's click on the enabled Cancel run control.
+                try
+                    [~,~,mouseButtons] = GetMouse;
+                    mouseButtonIsDown = any(mouseButtons);
+                    if mouseButtonIsDown && ~mouseButtonWasDown
+                        error('vstim:UserAbort', ...
+                            'User canceled with the VisualStimGUI mouse control.')
+                    end
+                    mouseButtonWasDown = mouseButtonIsDown;
+                catch mouseCancelError
+                    if strcmp(mouseCancelError.identifier, ...
+                            'vstim:UserAbort')
+                        rethrow(mouseCancelError)
+                    end
+                    mouseCancelAvailable = false;
+                    runData.display.guiCancelInputMode = ...
+                        "disabled_after_mouse_error";
+                    runData.display.guiCancelDiagnostic = ...
+                        string(mouseCancelError.message);
                 end
             end
 

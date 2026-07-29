@@ -273,8 +273,11 @@ directory is promoted ahead of `PsychBasic`, preventing placeholder files
 such as `Screen.m` from shadowing `Screen.mexw64`.
 
 During presentation, **Cancel run** provides a PsychHID-independent abort
-control. The GUI services this button at 5 Hz, marks the run as aborted,
-forces the Arduino TTL low, closes the Psychtoolbox window, and saves the
-partial run log. The GUI must remain visible on a display that is not covered
-by the fullscreen stimulus. Escape remains available when Psychtoolbox
-keyboard access works.
+control. The presentation loop checks for a new mouse press through the
+working `Screen` MEX at 5 Hz; it does not service MATLAB GUI callbacks or
+redraw the GUI inside the timing-critical loop. Because the other GUI controls
+are disabled during a run, any new mouse click is treated as a click on
+**Cancel run**. Cancellation marks the run as aborted, forces the Arduino TTL
+low, closes the Psychtoolbox window, and saves the partial run log. The GUI
+must remain visible on a display that is not covered by the fullscreen
+stimulus. Escape remains available when Psychtoolbox keyboard access works.
