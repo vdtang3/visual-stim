@@ -259,3 +259,8 @@ disabled only when both runtime methods fail; that state is recorded as
 `runData.display.keyboardInputMode = "disabled_unavailable"`. Keyboard
 permission failures on macOS remain fatal because they are normally resolved
 by granting MATLAB Input Monitoring access.
+
+Keyboard MEX errors that occur after presentation has started are handled the
+same way: the queue falls back to polling, and polling failure disables only
+keyboard input. Errors from `Screen`, `GetSecs`, or `WaitSecs` remain fatal
+because those components are required for valid visual timing.

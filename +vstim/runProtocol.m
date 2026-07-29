@@ -291,17 +291,72 @@ try
             runData.presentation.framesPresented(t) = frame;
 
             if keyboardQueueCreated
-                [keyPressed, firstPress] = KbQueueCheck;
-                if keyPressed && firstPress(escapeKey) > 0
-                    error('vstim:UserAbort', ...
-                        'User aborted with Escape.')
+                try
+                    [keyPressed, firstPress] = KbQueueCheck;
+                    if keyPressed && firstPress(escapeKey) > 0
+                        error('vstim:UserAbort', ...
+                            'User aborted with Escape.')
+                    end
+                catch keyboardRuntimeError
+                    if strcmp(keyboardRuntimeError.identifier, ...
+                            'vstim:UserAbort')
+                        rethrow(keyboardRuntimeError)
+                    elseif ~ispc
+                        rethrow(keyboardRuntimeError)
+                    end
+                    % A Windows PsychHID queue can pass initialization and
+                    % still fail later. Fall back to polling without
+                    % stopping the visual stimulus.
+                    keyboardQueueCreated = false;
+                    try
+                        KbQueueStop;
+                        KbQueueRelease;
+                    catch
+                    end
+                    try
+                        clear KbCheck
+                        KbCheck;
+                        keyboardFallbackPolling = true;
+                        keyboardPollStride = ...
+                            max(1,round(frameRate/10));
+                        runData.display.keyboardInputMode = ...
+                            "runtime_10_Hz_polling";
+                        runData.display.keyboardQueueRuntimeWarning = ...
+                            string(keyboardRuntimeError.message);
+                    catch keyboardPollingError
+                        keyboardFallbackPolling = false;
+                        keyboardAvailable = false;
+                        runData.display.keyboardAccessAvailable = false;
+                        runData.display.keyboardInputMode = ...
+                            "disabled_unavailable";
+                        runData.display.keyboardDiagnostic = ...
+                            string(keyboardPollingError.message);
+                        runData.display.keyboardQueueRuntimeWarning = ...
+                            string(keyboardRuntimeError.message);
+                    end
                 end
             elseif keyboardFallbackPolling && ...
                     mod(frame-1,keyboardPollStride) == 0
-                [keyPressed,~,keyCode] = KbCheck;
-                if keyPressed && keyCode(escapeKey)
-                    error('vstim:UserAbort', ...
-                        'User aborted with Escape.')
+                try
+                    [keyPressed,~,keyCode] = KbCheck;
+                    if keyPressed && keyCode(escapeKey)
+                        error('vstim:UserAbort', ...
+                            'User aborted with Escape.')
+                    end
+                catch keyboardRuntimeError
+                    if strcmp(keyboardRuntimeError.identifier, ...
+                            'vstim:UserAbort')
+                        rethrow(keyboardRuntimeError)
+                    elseif ~ispc
+                        rethrow(keyboardRuntimeError)
+                    end
+                    keyboardFallbackPolling = false;
+                    keyboardAvailable = false;
+                    runData.display.keyboardAccessAvailable = false;
+                    runData.display.keyboardInputMode = ...
+                        "disabled_unavailable";
+                    runData.display.keyboardDiagnostic = ...
+                        string(keyboardRuntimeError.message);
                 end
             end
         end
