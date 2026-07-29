@@ -251,10 +251,11 @@ analysis computer.
 
 ### Windows keyboard-access fallback
 
-If Psychtoolbox cannot initialize keyboard access on Windows, installation
-and stimulus presentation continue with keyboard input disabled. The run log
-records `runData.display.keyboardInputMode = "disabled_unavailable"` and the
-Psychtoolbox diagnostic. Escape cannot abort a run in this mode, so use short
-test runs first and allow the finite stimulus sequence to complete. Keyboard
+If the initial Psychtoolbox keyboard check fails on Windows, the error is
+suppressed and stimulus startup still tries the asynchronous keyboard queue.
+If that fails, it retries `KbCheck` after the display has initialized. Escape
+remains available whenever either runtime method succeeds. Keyboard input is
+disabled only when both runtime methods fail; that state is recorded as
+`runData.display.keyboardInputMode = "disabled_unavailable"`. Keyboard
 permission failures on macOS remain fatal because they are normally resolved
 by granting MATLAB Input Monitoring access.

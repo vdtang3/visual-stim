@@ -10,10 +10,11 @@ if isempty(which('PsychDefaultSetup')) || isempty(which('Screen'))
         ['Psychtoolbox is not available on the MATLAB path. Run ' ...
          'installVisualStim once, then reopen the GUI.'])
 end
-% Test keyboard access before opening a fullscreen window. On Windows, a
-% known PsychHID failure disables Escape abort support but does not prevent
-% stimulus presentation.
-[keyboardAvailable, keyboardDiagnostic] = vstim.checkKeyboardAccess;
+% Test keyboard access before opening a fullscreen window. A failed Windows
+% preflight is inconclusive; keyboard initialization is retried after the
+% Psychtoolbox window opens.
+[keyboardAvailable, keyboardPreflightDiagnostic] = ...
+    vstim.checkKeyboardAccess;
 if ~exist(cfg.session.outputDirectory, 'dir')
     mkdir(cfg.session.outputDirectory);
 end
@@ -105,7 +106,9 @@ try
     runData.display.geometry = rmfield(geometry, ...
         {'degToPxX', 'degToPxY', 'sizeDegToPx'});
     runData.display.keyboardAccessAvailable = keyboardAvailable;
-    runData.display.keyboardDiagnostic = keyboardDiagnostic;
+    runData.display.keyboardPreflightDiagnostic = ...
+        keyboardPreflightDiagnostic;
+    runData.display.keyboardDiagnostic = "";
     if any(cfg.protocol == ["Fast Gabor tiling", "Targeted Gabor grid", ...
             "Gabor + inverse stimuli"])
         pxPerDeg = geometry.pixelsPerDegAtCenter;
@@ -185,6 +188,7 @@ try
             KbQueueFlush;
             KbQueueCheck; % Prime before the first stimulus flip.
             keyboardQueueCreated = true;
+            runData.display.keyboardAccessAvailable = true;
             runData.display.keyboardInputMode = "asynchronous_queue";
         catch keyboardQueueError
             keyboardQueueCreated = false;
@@ -202,6 +206,7 @@ try
                 KbCheck;
                 keyboardFallbackPolling = true;
                 keyboardPollStride = max(1,round(frameRate/10));
+                runData.display.keyboardAccessAvailable = true;
                 runData.display.keyboardInputMode = ...
                     "primed_10_Hz_polling";
                 runData.display.keyboardQueueWarning = ...

@@ -1,8 +1,8 @@
 function [available, diagnostic] = checkKeyboardAccess
 %CHECKKEYBOARDACCESS Test whether Psychtoolbox can read the Escape key.
 % On macOS, MATLAB requires Privacy & Security > Input Monitoring access.
-% Windows installations with a known PsychHID keyboard-access problem may
-% continue without keyboard abort support; callers receive available=false.
+% A failed Windows preflight is treated as inconclusive because keyboard
+% queues may still work after the stimulus window opens.
 % Clear KbCheck first because a failed PsychHID initialization can leave its
 % persistent variables in an invalid partial state.
 
@@ -26,6 +26,9 @@ catch ME
         error('vstim:KeyboardUnavailable', ...
             'Psychtoolbox cannot access the keyboard:\n\n%s', ME.message)
     end
+    % Continue on Windows and let runProtocol retry the asynchronous queue
+    % and then KbCheck after the Psychtoolbox window has initialized.
+    available = true;
 end
 clear KbCheck
 end

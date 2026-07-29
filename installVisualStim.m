@@ -93,8 +93,8 @@ end
 
 % Escape is the preferred safety abort key. On macOS, keyboard failure is
 % normally a correctable Input Monitoring permission problem and remains
-% fatal. Some Windows rigs have a documented PsychHID access problem; those
-% installations may continue without keyboard abort support.
+% fatal. A failed Windows preflight is silently treated as inconclusive
+% because the keyboard often works once the Psychtoolbox window is open.
 try
     [keyboardAvailable, keyboardDiagnostic] = ...
         vstim.checkKeyboardAccess;
@@ -102,12 +102,6 @@ catch keyboardError
     uiwait(errordlg(keyboardError.message, ...
         'Keyboard permission required', 'modal'));
     rethrow(keyboardError)
-end
-if ~keyboardAvailable
-    fprintf(['Psychtoolbox keyboard access is unavailable on this Windows ' ...
-        'computer.\nInstallation will continue without the Escape-key ' ...
-        'abort control.\nPsychtoolbox reported: %s\n\n'], ...
-        keyboardDiagnostic);
 end
 
 %% Display configuration
@@ -283,7 +277,9 @@ installation.display.elevationLimitsDeg = elevationLimitsDeg;
 installation.display.skipSyncTests = skipSyncTests;
 installation.display.geometryCorrectionEnabled = geometryCorrectionEnabled;
 installation.display.geometryCalibrationFile = geometryCalibrationFile;
-installation.keyboard.availableAtInstallation = keyboardAvailable;
+installation.keyboard.preflightSucceeded = ...
+    keyboardAvailable && strlength(keyboardDiagnostic) == 0;
+installation.keyboard.runtimeRetryEnabled = ispc;
 installation.keyboard.diagnostic = keyboardDiagnostic;
 installation.sync.enabled = ttlEnabled;
 installation.sync.port = serialPort;

@@ -33,8 +33,12 @@ if keyboardPresent
     try
         [keyboardAvailable, keyboardDiagnostic] = ...
             vstim.checkKeyboardAccess;
-        if keyboardAvailable
+        if keyboardAvailable && strlength(keyboardDiagnostic) == 0
             keyboardDetail = "Escape safety control is available.";
+        elseif keyboardAvailable
+            keyboardDetail = ...
+                "Windows preflight was inconclusive; keyboard access will " + ...
+                "be retried during stimulus startup.";
         else
             keyboardDetail = "Keyboard access failed; stimuli can run on " + ...
                 "Windows with Escape abort disabled. " + keyboardDiagnostic;
