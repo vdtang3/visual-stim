@@ -280,4 +280,7 @@ are disabled during a run, any new mouse click is treated as a click on
 **Cancel run**. Cancellation marks the run as aborted, forces the Arduino TTL
 low, closes the Psychtoolbox window, and saves the partial run log. The GUI
 must remain visible on a display that is not covered by the fullscreen
-stimulus. Escape remains available when Psychtoolbox keyboard access works.
+stimulus. GUI-launched runs skip all PsychHID, `KbCheck`, `KbName`, and
+keyboard-queue initialization so a dysfunctional keyboard subsystem cannot
+block stimulus startup. Direct script calls to `vstim.runProtocol(cfg)`
+without GUI mouse cancellation retain the optional Escape-key path.

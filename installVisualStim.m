@@ -107,17 +107,22 @@ catch firstOpenGLError
     end
 end
 
-% Escape is the preferred safety abort key. On macOS, keyboard failure is
-% normally a correctable Input Monitoring permission problem and remains
-% fatal. A failed Windows preflight is silently treated as inconclusive
-% because the keyboard often works once the Psychtoolbox window is open.
-try
-    [keyboardAvailable, keyboardDiagnostic] = ...
-        vstim.checkKeyboardAccess;
-catch keyboardError
-    uiwait(errordlg(keyboardError.message, ...
-        'Keyboard permission required', 'modal'));
-    rethrow(keyboardError)
+% VisualStimGUI uses Screen-based mouse cancellation on Windows and does not
+% require PsychHID. Do not probe the keyboard here because affected shared
+% computers can block indefinitely inside KbCheck.
+if ispc
+    keyboardAvailable = false;
+    keyboardDiagnostic = ...
+        "Not probed; GUI runs use Screen-based mouse cancellation.";
+else
+    try
+        [keyboardAvailable, keyboardDiagnostic] = ...
+            vstim.checkKeyboardAccess;
+    catch keyboardError
+        uiwait(errordlg(keyboardError.message, ...
+            'Keyboard permission required', 'modal'));
+        rethrow(keyboardError)
+    end
 end
 
 %% Display configuration

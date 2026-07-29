@@ -261,7 +261,7 @@ end
             fprintf('%s\n', detection.message);
             setPresentationControls(true);
             statusLabel.Text = string(detection.message) + ...
-                " — Presenting; use Cancel run or Escape";
+                " — Presenting; use the red Cancel run control";
             statusLabel.FontColor = [0.75 0.35 0];
             drawnow;
             runData = vstim.runProtocol(cfg, true);

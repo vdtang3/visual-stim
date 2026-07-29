@@ -17,11 +17,18 @@ if isempty(which('PsychDefaultSetup')) || isempty(which('Screen'))
         ['Psychtoolbox is not available on the MATLAB path. Run ' ...
          'installVisualStim once, then reopen the GUI.'])
 end
-% Test keyboard access before opening a fullscreen window. A failed Windows
-% preflight is inconclusive; keyboard initialization is retried after the
-% Psychtoolbox window opens.
-[keyboardAvailable, keyboardPreflightDiagnostic] = ...
-    vstim.checkKeyboardAccess;
+% GUI runs use the raw mouse cancellation path and deliberately make no
+% PsychHID, KbCheck, or keyboard-queue calls. On affected Windows machines a
+% keyboard probe can block indefinitely instead of returning an error.
+if guiMouseCancelEnabled
+    keyboardAvailable = false;
+    keyboardPreflightDiagnostic = ...
+        "Skipped because GUI mouse cancellation is enabled.";
+    fprintf('[vstim] GUI mouse-cancel mode: all keyboard calls skipped.\n');
+else
+    [keyboardAvailable, keyboardPreflightDiagnostic] = ...
+        vstim.checkKeyboardAccess;
+end
 if ~exist(cfg.session.outputDirectory, 'dir')
     mkdir(cfg.session.outputDirectory);
 end
@@ -38,8 +45,16 @@ if strlength(runData.display.platformTimingWarning) > 0
         runData.display.platformTimingWarning)
 end
 
-PsychDefaultSetup(2);
-KbName('UnifyKeyNames');
+fprintf('[vstim] Initializing Psychtoolbox display settings...\n');
+if guiMouseCancelEnabled
+    % PsychDefaultSetup level 1 and above calls KbName. Reproduce only the
+    % normalized 0-1 color-range setting needed by this package.
+    PsychDefaultSetup(0);
+    global psych_default_colormode
+    psych_default_colormode = 1;
+else
+    PsychDefaultSetup(2);
+end
 Screen('Preference', 'SkipSyncTests', double(cfg.display.skipSyncTests));
 Screen('Preference', 'VisualDebugLevel', 1);
 Screen('Preference', 'Verbosity', 1);
@@ -80,8 +95,11 @@ try
         PsychImaging('AddTask', 'AllViews', 'GeometryCorrection', ...
             calibrationFile);
     end
+    fprintf('[vstim] Opening stimulus window on Screen %d...\n', ...
+        screenNumber);
     [win, winRect] = PsychImaging('OpenWindow', screenNumber, ...
         cfg.display.backgroundGray);
+    fprintf('[vstim] Stimulus window opened; preparing sequence...\n');
     if guiMouseCancelEnabled
         % Keep the pointer visible on the separate GUI display so the red
         % Cancel run control remains easy to target.
@@ -119,6 +137,7 @@ try
     runData.display.geometry = rmfield(geometry, ...
         {'degToPxX', 'degToPxY', 'sizeDegToPx'});
     runData.display.keyboardAccessAvailable = keyboardAvailable;
+    runData.display.keyboardInputMode = "disabled_by_gui_mouse_mode";
     runData.display.keyboardPreflightDiagnostic = ...
         keyboardPreflightDiagnostic;
     runData.display.keyboardDiagnostic = "";
@@ -192,6 +211,7 @@ try
     runData.sync.startedLow = true;
     runData.sync.endedLow = false;
 
+    fprintf('[vstim] Sequence ready; initializing TTL and cancel control...\n');
     ttl = vstim.TTLController(cfg.sync);
     if keyboardAvailable
         escapeKey = KbName('ESCAPE');
@@ -244,7 +264,8 @@ try
                     string(keyboardQueueError.message);
             end
         end
-    else
+    elseif runData.display.keyboardInputMode ~= ...
+            "disabled_by_gui_mouse_mode"
         runData.display.keyboardInputMode = "disabled_unavailable";
     end
 
@@ -262,6 +283,8 @@ try
                 string(mouseCancelError.message);
         end
     end
+    fprintf('[vstim] Starting visual presentation (%d trials/patterns).\n', ...
+        nTrials);
     vbl = Screen('Flip', win);
     flipImmediatelyAfterISI = false;
 

@@ -29,7 +29,13 @@ addCheck("Psychtoolbox Screen",~isempty(which('Screen')),"FAIL", ...
 keyboardPresent = ~isempty(which('KbCheck'));
 keyboardAvailable = false;
 keyboardDetail = "KbCheck is missing; Escape abort will be disabled.";
-if keyboardPresent
+if ispc
+    % Never invoke KbCheck during Windows compatibility testing. The GUI
+    % cancel control uses Screen's mouse helper instead of PsychHID.
+    keyboardAvailable = true;
+    keyboardDetail = ...
+        "Not probed on Windows; GUI cancellation does not require PsychHID.";
+elseif keyboardPresent
     try
         [keyboardAvailable, keyboardDiagnostic] = ...
             vstim.checkKeyboardAccess;
