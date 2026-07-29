@@ -15,6 +15,16 @@ end
 persistent cachedRoot cachedExtension cachedGeneratedPath ...
     cachedMexDirectories
 currentExtension = "." + string(mexext);
+if ~isempty(cachedRoot) && ...
+        strcmp(cachedRoot, psychtoolboxPath) && ...
+        cachedExtension == currentExtension && ...
+        requiredMexFilesAlreadySelected(psychtoolboxPath, currentExtension)
+    % defaultConfig calls loadInstallationConfig frequently while the GUI is
+    % edited. Avoid rebuilding MATLAB's full toolbox path and rehashing the
+    % toolbox cache once the correct platform MEX files are already active.
+    mexDirectories = cachedMexDirectories;
+    return
+end
 if isempty(cachedRoot) || ...
         ~strcmp(cachedRoot, psychtoolboxPath) || ...
         cachedExtension ~= currentExtension
@@ -46,4 +56,19 @@ for i = numel(mexDirectories):-1:1
     addpath(char(mexDirectories(i)), '-begin');
 end
 rehash toolboxcache
+end
+
+function selected = requiredMexFilesAlreadySelected(root, extension)
+requiredNames = ["Screen", "GetSecs", "WaitSecs"];
+selected = true;
+rootPrefix = string(root) + filesep;
+for name = requiredNames
+    activeFile = string(which(char(name)));
+    if strlength(activeFile) == 0 || ...
+            ~endsWith(activeFile, extension, 'IgnoreCase', true) || ...
+            ~startsWith(activeFile, rootPrefix, 'IgnoreCase', ispc)
+        selected = false;
+        return
+    end
+end
 end

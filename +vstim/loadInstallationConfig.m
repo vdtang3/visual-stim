@@ -35,8 +35,19 @@ if isfield(installation, 'psychtoolboxPath') && ...
     vstim.addPsychtoolboxPath(installation.psychtoolboxPath);
 end
 vendorRoot = fullfile(projectRoot,'vendor','in_vivo_patch');
-if isfolder(vendorRoot)
+if isfolder(vendorRoot) && ~pathContainsDirectory(vendorRoot)
     addpath(genpath(vendorRoot));
 end
-addpath(projectRoot,'-begin');
+if ~pathContainsDirectory(projectRoot)
+    addpath(projectRoot,'-begin');
+end
+end
+
+function present = pathContainsDirectory(directory)
+entries = string(strsplit(path,pathsep));
+if ispc
+    present = any(strcmpi(entries,string(directory)));
+else
+    present = any(entries == string(directory));
+end
 end
