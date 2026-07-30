@@ -274,13 +274,28 @@ such as `Screen.m` from shadowing `Screen.mexw64`.
 
 During presentation, **Cancel run** provides a PsychHID-independent abort
 control. The presentation loop checks for a new mouse press through the
-working `Screen` MEX at 5 Hz; it does not service MATLAB GUI callbacks or
-redraw the GUI inside the timing-critical loop. Because the other GUI controls
-are disabled during a run, any new mouse click is treated as a click on
-**Cancel run**. Cancellation marks the run as aborted, forces the Arduino TTL
-low, closes the Psychtoolbox window, and saves the partial run log. The GUI
-must remain visible on a display that is not covered by the fullscreen
-stimulus. GUI-launched runs skip all PsychHID, `KbCheck`, `KbName`, and
-keyboard-queue initialization so a dysfunctional keyboard subsystem cannot
-block stimulus startup. Direct script calls to `vstim.runProtocol(cfg)`
-without GUI mouse cancellation retain the optional Escape-key path.
+working `Screen` MEX at 20 Hz; it does not service MATLAB GUI callbacks or
+redraw the GUI inside the timing-critical loop. A press cancels only when the
+pointer is within the red **Cancel run** button, so dragging or clicking
+elsewhere in the GUI does not abort the run. Cancellation marks the run as
+aborted, forces the Arduino TTL low, closes the Psychtoolbox window, and saves
+the partial run log. The GUI must remain visible on a display that is not
+covered by the fullscreen stimulus. GUI-launched runs skip all PsychHID,
+`KbCheck`, `KbName`, and keyboard-queue initialization so a dysfunctional
+keyboard subsystem cannot block stimulus startup. Direct script calls to
+`vstim.runProtocol(cfg)` without GUI mouse cancellation retain the optional
+Escape-key path.
+
+Every saved run includes `runData.display.presentationQuality`, with a
+`PASS`, `WARN`, or `INCOMPLETE` verdict based on expected versus presented
+frames, Psychtoolbox missed deadlines, long frame intervals, estimated
+dropped refreshes, and inter-stimulus timing. Recalculate or inspect it with:
+
+```matlab
+saved = load('visual_stim_...mat');
+quality = vstim.assessPresentationQuality(saved.runData)
+```
+
+This report verifies software scheduling and flip timestamps. A photodiode
+recorded by WaveSurfer is still required to independently verify the physical
+monitor's luminance transitions.

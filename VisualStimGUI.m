@@ -264,7 +264,9 @@ end
                 " — Presenting; use the red Cancel run control";
             statusLabel.FontColor = [0.75 0.35 0];
             drawnow;
-            runData = vstim.runProtocol(cfg, true);
+            cancelOptions.enabled = true;
+            cancelOptions.targetBoundsPx = cancelButtonScreenBounds();
+            runData = vstim.runProtocol(cfg, cancelOptions);
             clearDetectionMetadata();
             if runData.status.completed
                 statusLabel.Text = "Completed and saved: " + ...
@@ -284,6 +286,20 @@ end
             uialert(fig, ME.message, 'Stimulus error');
         end
         setPresentationControls(false);
+    end
+
+    function bounds = cancelButtonScreenBounds
+        % getpixelposition(...,true) is relative to the uifigure content.
+        % Convert it to MATLAB root screen coordinates and add a small
+        % tolerance for Windows title-bar and DPI rounding.
+        buttonPosition = getpixelposition(cancelButton,true);
+        figurePosition = fig.Position;
+        paddingPx = 12;
+        left = figurePosition(1) + buttonPosition(1);
+        bottom = figurePosition(2) + buttonPosition(2);
+        bounds = [left-paddingPx, bottom-paddingPx, ...
+            left+buttonPosition(3)+paddingPx, ...
+            bottom+buttonPosition(4)+paddingPx];
     end
 
     function setPresentationControls(isRunning)

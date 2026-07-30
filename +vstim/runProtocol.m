@@ -1,14 +1,30 @@
-function runData = runProtocol(cfg, guiMouseCancelEnabled)
+function runData = runProtocol(cfg, guiMouseCancelOptions)
 %RUNPROTOCOL Generate and present one complete Psychtoolbox experiment.
 % WaveSurfer should already be acquiring. The function always attempts to
 % leave the Arduino TTL low and saves partial data after an abort or error.
-% guiMouseCancelEnabled uses raw mouse-button polling through Screen so the
+% guiMouseCancelOptions uses raw mouse-button polling through Screen so the
 % GUI cancel control does not require MATLAB callbacks during presentation.
 
 if nargin < 2
-    guiMouseCancelEnabled = false;
+    guiMouseCancelOptions = false;
 end
-guiMouseCancelEnabled = logical(guiMouseCancelEnabled);
+guiCancelTargetBoundsPx = [];
+if isstruct(guiMouseCancelOptions)
+    guiMouseCancelEnabled = isfield(guiMouseCancelOptions,'enabled') && ...
+        isscalar(guiMouseCancelOptions.enabled) && ...
+        logical(guiMouseCancelOptions.enabled);
+    if isfield(guiMouseCancelOptions,'targetBoundsPx')
+        guiCancelTargetBoundsPx = ...
+            double(guiMouseCancelOptions.targetBoundsPx(:)');
+        if numel(guiCancelTargetBoundsPx) ~= 4 || ...
+                any(~isfinite(guiCancelTargetBoundsPx))
+            error('vstim:InvalidCancelTarget', ...
+                'GUI cancel target bounds must contain four finite values.')
+        end
+    end
+else
+    guiMouseCancelEnabled = logical(guiMouseCancelOptions);
+end
 
 cfg = vstim.normalizeDisplayGeometry(cfg);
 vstim.validateConfig(cfg);
@@ -142,9 +158,11 @@ try
         keyboardPreflightDiagnostic;
     runData.display.keyboardDiagnostic = "";
     runData.display.guiCancelEnabled = guiMouseCancelEnabled;
-    runData.display.guiCancelPollingHz = 5;
+    runData.display.guiCancelPollingHz = 20;
     runData.display.guiCancelInputMode = "disabled";
     runData.display.guiCancelDiagnostic = "";
+    runData.display.guiCancelTargetBoundsPx = ...
+        guiCancelTargetBoundsPx;
     guiCancelPollStride = max(1, ...
         round(frameRate/runData.display.guiCancelPollingHz));
     if any(cfg.protocol == ["Fast Gabor tiling", "Targeted Gabor grid", ...
@@ -349,16 +367,33 @@ try
 
             if mouseCancelAvailable && ...
                     mod(frame-1,guiCancelPollStride) == 0
-                % On Windows, GetMouse reads button state through Screen's
+                % GetMouse reads button state through Screen's
                 % GetMouseHelper and does not require PsychHID or MATLAB's
-                % GUI callback queue. A new mouse press is treated as the
-                % experimenter's click on the enabled Cancel run control.
+                % GUI callback queue. Poll at 20 Hz for responsive clicks
+                % without adding a mouse query to every display refresh.
                 try
                     [~,~,mouseButtons] = GetMouse;
                     mouseButtonIsDown = any(mouseButtons);
                     if mouseButtonIsDown && ~mouseButtonWasDown
-                        error('vstim:UserAbort', ...
-                            'User canceled with the VisualStimGUI mouse control.')
+                        cancelTargetPressed = true;
+                        if ~isempty(guiCancelTargetBoundsPx)
+                            pointerPosition = ...
+                                double(get(groot,'PointerLocation'));
+                            cancelTargetPressed = ...
+                                pointerPosition(1) >= ...
+                                    guiCancelTargetBoundsPx(1) && ...
+                                pointerPosition(1) <= ...
+                                    guiCancelTargetBoundsPx(3) && ...
+                                pointerPosition(2) >= ...
+                                    guiCancelTargetBoundsPx(2) && ...
+                                pointerPosition(2) <= ...
+                                    guiCancelTargetBoundsPx(4);
+                        end
+                        if cancelTargetPressed
+                            error('vstim:UserAbort', ...
+                                ['User canceled with the VisualStimGUI ' ...
+                                 'Cancel run control.'])
+                        end
                     end
                     mouseButtonWasDown = mouseButtonIsDown;
                 catch mouseCancelError
@@ -533,6 +568,20 @@ Priority(0);
 ShowCursor;
 if ~isempty(win)
     Screen('CloseAll');
+end
+
+try
+    runData.display.presentationQuality = ...
+        vstim.assessPresentationQuality(runData);
+    if runData.status.completed
+        runData.status.message = ...
+            runData.display.presentationQuality.summary;
+    end
+catch qualityError
+    runData.display.presentationQuality = struct( ...
+        'verdict',"UNAVAILABLE", ...
+        'summary',"Presentation QC could not be calculated.", ...
+        'diagnostic',string(qualityError.message));
 end
 
 runData.status.endedAt = datetime('now');

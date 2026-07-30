@@ -54,5 +54,26 @@ assert(inverseAperture.supportDiameterPx > ...
 
 result = vstim.emptyAnalysisResult("test");
 assert(height(result.durationComparison) == 6)
+
+mockRun.status.completed = true;
+mockRun.display.ifiSec = 0.01;
+mockRun.sequence.trials = table([0.10;0.10],[0.05;0], ...
+    'VariableNames',{'durationSec','interStimulusSec'});
+mockRun.presentation.framesPresented = [10;10];
+mockRun.presentation.missedFlipCount = [0;0];
+mockRun.presentation.longFrameIntervalCount = [0;0];
+mockRun.presentation.estimatedDroppedRefreshCount = [0;0];
+mockRun.presentation.maximumMissSec = [0;0];
+mockRun.presentation.maximumFrameIntervalSec = [0.01;0.01];
+mockRun.presentation.actualInterStimulusSec = [0.05;NaN];
+quality = vstim.assessPresentationQuality(mockRun);
+assert(quality.pass && quality.verdict=="PASS")
+mockRun.presentation.estimatedDroppedRefreshCount(1) = 1;
+quality = vstim.assessPresentationQuality(mockRun);
+assert(~quality.pass && quality.verdict=="WARN")
+mockRun.status.completed = false;
+quality = vstim.assessPresentationQuality(mockRun);
+assert(~quality.pass && quality.verdict=="INCOMPLETE")
+
 fprintf('All generator tests passed.\n');
 end
