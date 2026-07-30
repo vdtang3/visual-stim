@@ -67,10 +67,10 @@ helpBox = uitextarea(right, 'Editable', 'off', ...
     'Value', protocolHelp(cfg.protocol), 'FontName', 'Menlo');
 helpBox.Layout.Row = 2;
 
-footer = uigridlayout(main, [1 6]);
+footer = uigridlayout(main, [1 7]);
 footer.Layout.Row = 3;
 footer.Layout.Column = [1 2];
-footer.ColumnWidth = {120, 140, 140, '1x', 150, 150};
+footer.ColumnWidth = {120, 140, 140, '1x', 165, 150, 150};
 resetButton = uibutton(footer, 'Text', 'Reset defaults', ...
     'ButtonPushedFcn', @resetPressed);
 saveButton = uibutton(footer, 'Text', 'Save configuration', ...
@@ -78,6 +78,8 @@ saveButton = uibutton(footer, 'Text', 'Save configuration', ...
 loadButton = uibutton(footer, 'Text', 'Load configuration', ...
     'ButtonPushedFcn', @loadConfigPressed);
 statusLabel = uilabel(footer, 'Text', 'Ready', 'FontColor', [0.2 0.4 0.2]);
+elapsedLabel = uilabel(footer, 'Text', 'Elapsed: --:--', ...
+    'FontWeight', 'bold', 'HorizontalAlignment', 'right');
 runButton = uibutton(footer, 'Text', 'Run stimulus', ...
     'FontWeight', 'bold', 'BackgroundColor', [0.25 0.55 0.85], ...
     'FontColor', [1 1 1], 'ButtonPushedFcn', @runPressed);
@@ -86,6 +88,9 @@ cancelButton = uibutton(footer, 'Text', 'Cancel run', ...
     'BackgroundColor', [0.75 0.2 0.2], 'FontColor', [1 1 1]);
 
 regionROI = [];
+presentationTimer = [];
+presentationStartedTic = [];
+presentationEstimatedSec = NaN;
 refreshEditors();
 updateTargetButtons();
 refreshTargetMap();
@@ -271,10 +276,12 @@ end
             statusLabel.Text = string(detection.message) + ...
                 " — Presenting; use the red Cancel run control";
             statusLabel.FontColor = [0.75 0.35 0];
+            startPresentationTimer();
             drawnow;
             cancelOptions.enabled = true;
             cancelOptions.targetBoundsPx = cancelButtonScreenBounds();
             runData = vstim.runProtocol(cfg, cancelOptions);
+            stopPresentationTimer();
             clearDetectionMetadata();
             if runData.status.completed
                 statusLabel.Text = "Completed and saved: " + ...
@@ -288,12 +295,70 @@ end
                 statusLabel.FontColor = [0.75 0.35 0];
             end
         catch ME
+            stopPresentationTimer();
             clearDetectionMetadata();
             statusLabel.Text = 'Presentation failed; TTL cleanup attempted';
             statusLabel.FontColor = [0.8 0.1 0.1];
             uialert(fig, ME.message, 'Stimulus error');
         end
         setPresentationControls(false);
+    end
+
+    function startPresentationTimer()
+        stopPresentationTimer();
+        estimate = vstim.estimateDuration(cfg,60);
+        presentationEstimatedSec = estimate.durationSec;
+        presentationStartedTic = tic;
+        updatePresentationTimer([],[]);
+        try
+            presentationTimer = timer( ...
+                'ExecutionMode','fixedSpacing', ...
+                'Period',1, ...
+                'BusyMode','drop', ...
+                'TimerFcn',@updatePresentationTimer, ...
+                'ErrorFcn',@presentationTimerError);
+            start(presentationTimer);
+        catch timerStartError
+            presentationTimer = [];
+            elapsedLabel.Text = 'Elapsed: unavailable';
+            fprintf('[vstim] GUI elapsed timer unavailable: %s\n', ...
+                timerStartError.message);
+        end
+    end
+
+    function updatePresentationTimer(~,~)
+        if isempty(presentationStartedTic) || ...
+                ~isvalid(fig)
+            return
+        end
+        elapsedSec = toc(presentationStartedTic);
+        elapsedLabel.Text = sprintf('Elapsed: %s / %s', ...
+            formatClockDuration(elapsedSec), ...
+            formatClockDuration(presentationEstimatedSec));
+    end
+
+    function presentationTimerError(~,~)
+        % A timer display failure must never interrupt stimulus delivery.
+        try
+            elapsedLabel.Text = 'Elapsed: unavailable';
+            fprintf('[vstim] GUI elapsed timer stopped unexpectedly.\n');
+        catch
+        end
+    end
+
+    function stopPresentationTimer()
+        if ~isempty(presentationStartedTic) && isvalid(fig)
+            elapsedLabel.Text = "Elapsed: " + ...
+                string(formatClockDuration(toc(presentationStartedTic)));
+        end
+        if ~isempty(presentationTimer)
+            try
+                stop(presentationTimer);
+                delete(presentationTimer);
+            catch
+            end
+        end
+        presentationTimer = [];
     end
 
     function bounds = cancelButtonScreenBounds
@@ -441,8 +506,27 @@ end
                 'A run is active. Click the red Cancel run button first.';
             return
         end
+        stopPresentationTimer();
         delete(fig);
     end
+end
+
+function text = formatClockDuration(durationSec)
+%FORMATCLOCKDURATION Format elapsed or estimated time without dates.
+
+if ~isscalar(durationSec) || ~isfinite(durationSec) || durationSec < 0
+    text = '--:--';
+    return
+end
+totalSeconds = floor(durationSec);
+hours = floor(totalSeconds/3600);
+minutes = floor(mod(totalSeconds,3600)/60);
+seconds = mod(totalSeconds,60);
+if hours > 0
+    text = sprintf('%02d:%02d:%02d',hours,minutes,seconds);
+else
+    text = sprintf('%02d:%02d',minutes,seconds);
+end
 end
 
 function text = protocolHelp(protocol)
