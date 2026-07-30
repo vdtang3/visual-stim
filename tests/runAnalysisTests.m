@@ -4,6 +4,7 @@ function runAnalysisTests
 addpath(fileparts(fileparts(mfilename('fullpath'))));
 rng(7);
 testStartupTTLAlignment;
+testFramePulseAlignment;
 testFlashedBars;
 testGaborGrid;
 testFlatGaborRejected;
@@ -34,6 +35,38 @@ assert(alignment.ignoredLeadingEdgeCount==numel(startupOnsets));
 assert(alignment.ignoredTrailingEdgeCount==0);
 assert(alignment.completeMatch);
 assert(~alignment.exactRecordedCountMatch);
+end
+
+function testFramePulseAlignment
+nTrials = 6;
+trials = table((1:nTrials)',repmat(0.1,nTrials,1),zeros(nTrials,1), ...
+    'VariableNames',{'trialIndex','durationSec','interStimulusSec'});
+runData = makeRun("Flashed bars",trials);
+runData.sequence.ttlMode = "onset_frame_pulse";
+runData.display.ifiSec = 1/60;
+runData.sync.expectedOnsetPulseSec = 1/60;
+fs = 12000;
+onsets = round((1+(0:nTrials-1)'*0.1)*fs);
+nSamples = onsets(end)+round(0.2*fs);
+data.di.screen = false(nSamples,1);
+data.meta.fs = fs;
+data.spikes.spks = [];
+pulseSamples = round(fs/60);
+for i = 1:nTrials
+    data.di.screen(onsets(i):onsets(i)+pulseSamples-1) = true;
+end
+alignment = vstim.alignRecordedStimuli(runData,data);
+assert(isequal(alignment.trials.onsetSample,onsets))
+assert(alignment.ttlMode=="onset_frame_pulse")
+assert(alignment.pulseWidthViolationCount==0)
+assert(abs(alignment.medianPulseWidthSec-1/60)<1/fs)
+
+% An abnormally long first-frame TTL is treated as a synchronization or
+% presentation-hang warning.
+data.di.screen(onsets(3):onsets(3)+3*pulseSamples-1) = true;
+alignment = vstim.alignRecordedStimuli(runData,data);
+assert(alignment.pulseWidthViolationCount==1)
+assert(~isempty(alignment.warnings))
 end
 
 function testFlashedBars

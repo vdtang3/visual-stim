@@ -13,6 +13,7 @@ for protocol = protocols
     sequence = vstim.generateSequence(cfg, 60);
     assert(height(sequence.trials) > 0)
     assert(sequence.estimatedDurationSec > 0)
+    assert(sequence.ttlMode=="onset_frame_pulse")
     fprintf('%s: %d trials/patterns, %.3f s, TTL=%s\n', ...
         protocol, height(sequence.trials), sequence.estimatedDurationSec, ...
         sequence.ttlMode);
@@ -29,6 +30,14 @@ for protocol = protocols
             min(sequence.blackCounts), max(sequence.blackCounts));
     end
 end
+
+flashed = vstim.defaultConfig("Flashed bars");
+flashed.stimulus.interStimulusSec = 0;
+sequence = vstim.generateSequence(flashed, 60);
+assert(sequence.ttlMode=="onset_frame_pulse")
+flashed.stimulus.interStimulusSec = 0.1;
+sequence = vstim.generateSequence(flashed, 60);
+assert(sequence.ttlMode=="onset_frame_pulse")
 
 aperture = vstim.circularApertureGeometry(20,10,12);
 assert(aperture.supportDiameterPx==360);
@@ -66,8 +75,13 @@ mockRun.presentation.estimatedDroppedRefreshCount = [0;0];
 mockRun.presentation.maximumMissSec = [0;0];
 mockRun.presentation.maximumFrameIntervalSec = [0.01;0.01];
 mockRun.presentation.actualInterStimulusSec = [0.05;NaN];
+mockRun.presentation.flipOnsetSec = [1.00;1.15];
 quality = vstim.assessPresentationQuality(mockRun);
 assert(quality.pass && quality.verdict=="PASS")
+mockRun.presentation.flipOnsetSec(2) = 1.25;
+quality = vstim.assessPresentationQuality(mockRun);
+assert(~quality.pass && quality.trialOnsetIntervalViolationCount==1)
+mockRun.presentation.flipOnsetSec(2) = 1.15;
 mockRun.presentation.estimatedDroppedRefreshCount(1) = 1;
 quality = vstim.assessPresentationQuality(mockRun);
 assert(~quality.pass && quality.verdict=="WARN")

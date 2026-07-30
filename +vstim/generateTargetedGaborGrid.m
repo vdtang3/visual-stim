@@ -39,5 +39,6 @@ sequence.gridRadius = p.gridRadius;
 sequence.gridSpacingDeg = p.gridSpacingDeg;
 sequence.estimatedDurationSec = sum( ...
     trials.durationSec + trials.interStimulusSec);
-sequence.ttlMode = "epoch";
+sequence.ttlMode = "onset_frame_pulse";
+sequence.ttlModeReason = "one_display_frame_pulse_for_every_trial";
 end

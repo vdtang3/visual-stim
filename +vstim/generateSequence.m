@@ -25,6 +25,10 @@ switch string(cfg.protocol)
         error('vstim:UnknownProtocol', 'Unknown protocol "%s".', cfg.protocol)
 end
 
+% All protocols use the same synchronization convention: the TTL is high
+% for the first displayed frame of every trial or pattern.
+sequence.ttlMode = "onset_frame_pulse";
+sequence.ttlModeReason = "one_display_frame_pulse_for_every_trial";
 sequence.schemaVersion = cfg.schemaVersion;
 sequence.protocol = cfg.protocol;
 sequence.randomSeed = cfg.session.randomSeed;

@@ -21,9 +21,23 @@ metrics.plannedTrialCount = result.sync.plannedTrialCount;
 metrics.recordedTTLCount = result.sync.recordedTrialCount;
 metrics.matchedTrialCount = result.sync.matchedTrialCount;
 metrics.completeTTLMatch = result.sync.completeMatch;
+metrics.ttlMode = result.sync.ttlMode;
 if isfield(result.sync,'ignoredLeadingEdgeCount')
     metrics.ignoredLeadingTTLCount = result.sync.ignoredLeadingEdgeCount;
     metrics.ignoredTrailingTTLCount = result.sync.ignoredTrailingEdgeCount;
+end
+if isfield(result.sync,'expectedPulseWidthSec') && ...
+        isfinite(result.sync.expectedPulseWidthSec)
+    metrics.expectedTTLPulseWidthMs = ...
+        result.sync.expectedPulseWidthSec*1000;
+    metrics.medianRecordedTTLPulseWidthMs = ...
+        result.sync.medianPulseWidthSec*1000;
+    metrics.maximumTTLPulseWidthErrorMs = ...
+        result.sync.maximumPulseWidthErrorSec*1000;
+    metrics.ttlPulseWidthViolationCount = ...
+        result.sync.pulseWidthViolationCount;
+    metrics.missingTTLFallingEdgeCount = ...
+        result.sync.missingFallingEdgeCount;
 end
 trials = runData.sequence.trials;
 metrics.medianStimulusDurationMs = median(trials.durationSec)*1000;

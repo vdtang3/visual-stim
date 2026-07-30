@@ -43,5 +43,6 @@ sequence.horizontalPositionsDeg = horizontal(:);
 sequence.mappingAzimuthLimitsDeg = azLimits;
 sequence.mappingElevationLimitsDeg = elLimits;
 sequence.estimatedDurationSec = sum(trials.durationSec + trials.interStimulusSec);
-sequence.ttlMode = "epoch";
+sequence.ttlMode = "onset_frame_pulse";
+sequence.ttlModeReason = "one_display_frame_pulse_for_every_trial";
 end

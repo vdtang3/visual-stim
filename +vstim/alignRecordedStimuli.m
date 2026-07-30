@@ -9,7 +9,9 @@ end
 
 screenHigh = data.di.screen(:) > 0.5;
 risingSamples = find(diff([false; screenHigh]) == 1);
-fallingSamples = find(diff([screenHigh; false]) == -1);
+% Label a falling edge by the first low sample, matching the rising-edge
+% convention of labeling the first high sample.
+fallingSamples = find(diff([screenHigh; false]) == -1)+1;
 nPlanned = height(runData.sequence.trials);
 nRecorded = numel(risingSamples);
 nMatched = min(nPlanned, nRecorded);
@@ -32,15 +34,21 @@ trials.onsetSec = (trials.onsetSample-1)/data.meta.fs;
 trials.offsetSample = nan(nMatched,1);
 trials.recordedDurationSec = nan(nMatched,1);
 
-if string(runData.sequence.ttlMode) == "epoch"
-    for i = 1:nMatched
-        offset = fallingSamples(find( ...
-            fallingSamples >= trials.onsetSample(i), 1, 'first'));
-        if ~isempty(offset)
-            trials.offsetSample(i) = offset;
-            trials.recordedDurationSec(i) = ...
-                (offset-trials.onsetSample(i))/data.meta.fs;
-        end
+% Record the corresponding falling edge for every TTL convention. For
+% onset-frame pulses this measures synchronization quality; for legacy
+% epoch files it retains the stimulus-duration measurement.
+for i = 1:nMatched
+    if i < nMatched
+        nextOnset = trials.onsetSample(i+1);
+    else
+        nextOnset = inf;
+    end
+    offset = fallingSamples(find(fallingSamples >= ...
+        trials.onsetSample(i) & fallingSamples < nextOnset,1,'first'));
+    if ~isempty(offset)
+        trials.offsetSample(i) = offset;
+        trials.recordedDurationSec(i) = ...
+            (offset-trials.onsetSample(i))/data.meta.fs;
     end
 end
 
@@ -58,6 +66,13 @@ alignment.matchedTrialCount = nMatched;
 alignment.completeMatch = nMatched == nPlanned;
 alignment.exactRecordedCountMatch = nPlanned == nRecorded;
 alignment.ttlMode = string(runData.sequence.ttlMode);
+alignment.expectedPulseWidthSec = NaN;
+alignment.medianPulseWidthSec = NaN;
+alignment.maximumPulseWidthErrorSec = NaN;
+alignment.pulseWidthToleranceSec = NaN;
+alignment.pulseWidthViolationCount = NaN;
+alignment.missingFallingEdgeCount = ...
+    sum(~isfinite(trials.recordedDurationSec));
 alignment.warnings = strings(0,1);
 if nRecorded < nPlanned
     alignment.warnings(end+1) = sprintf( ...
@@ -74,6 +89,29 @@ if any(diff(risingSamples) <= 0)
     alignment.warnings(end+1) = ...
         "Screen TTL onset samples were not strictly increasing.";
 end
+if alignment.ttlMode == "onset_frame_pulse"
+    expectedPulseWidthSec = expectedFramePulseWidth(runData);
+    alignment.expectedPulseWidthSec = expectedPulseWidthSec;
+    pulseWidths = trials.recordedDurationSec;
+    valid = isfinite(pulseWidths);
+    if any(valid)
+        pulseErrors = pulseWidths(valid)-expectedPulseWidthSec;
+        alignment.medianPulseWidthSec = median(pulseWidths(valid));
+        alignment.maximumPulseWidthErrorSec = max(abs(pulseErrors));
+    end
+    alignment.pulseWidthToleranceSec = ...
+        max(0.5*expectedPulseWidthSec,0.002);
+    alignment.pulseWidthViolationCount = ...
+        alignment.missingFallingEdgeCount + ...
+        sum(abs(pulseWidths(valid)-expectedPulseWidthSec) > ...
+        alignment.pulseWidthToleranceSec);
+    if alignment.pulseWidthViolationCount > 0
+        alignment.warnings(end+1) = sprintf( ...
+            ['Detected %d one-frame TTL pulse-width violation(s); this ' ...
+             'can indicate a presentation hang or a synchronization ' ...
+             'problem.'], alignment.pulseWidthViolationCount);
+    end
+end
 end
 
 function [selected, scores] = selectBestEdgeBlock( ...
@@ -89,6 +127,9 @@ if ismember('interStimulusSec', plannedTrials.Properties.VariableNames)
         plannedTrials.interStimulusSec(1:end-1);
 end
 expectedDurations = plannedTrials.durationSec;
+if ttlMode == "onset_frame_pulse"
+    expectedDurations(:) = expectedFramePulseWidth(runData);
+end
 
 % Prefer actual command timestamps saved during presentation. Nominal
 % sequence timing remains the fallback for old or interrupted run files.
@@ -100,7 +141,7 @@ if isfield(runData,'presentation') && istable(runData.presentation)
         valid = isfinite(actualIntervals);
         expectedIntervals(valid) = actualIntervals(valid);
     end
-    if ttlMode == "epoch" && all(ismember( ...
+    if any(ttlMode == ["epoch","onset_frame_pulse"]) && all(ismember( ...
             {'ttlHighSec','ttlLowSec'},names))
         actualDurations = runData.presentation.ttlLowSec - ...
             runData.presentation.ttlHighSec;
@@ -120,12 +161,17 @@ for startIndex = 1:nCandidates
     end
 
     durationError = 0;
-    if ttlMode == "epoch"
+    if any(ttlMode == ["epoch","onset_frame_pulse"])
         observedDurations = nan(nPlanned,1);
         for i = 1:nPlanned
             onset = risingSamples(edgeIndices(i));
-            offset = fallingSamples(find(fallingSamples >= onset, ...
-                1, 'first'));
+            if i < nPlanned
+                nextOnset = risingSamples(edgeIndices(i+1));
+            else
+                nextOnset = inf;
+            end
+            offset = fallingSamples(find(fallingSamples >= onset & ...
+                fallingSamples < nextOnset,1,'first'));
             if ~isempty(offset)
                 observedDurations(i) = (offset-onset)/fs;
             end
@@ -148,4 +194,26 @@ bestScore = min(scores);
 % the real sequence without overriding timing evidence for a leading block.
 bestStart = find(scores <= bestScore+1e-12, 1, 'last');
 selected = (bestStart:(bestStart+nPlanned-1))';
+end
+
+function pulseWidthSec = expectedFramePulseWidth(runData)
+% Prefer the measured display interval saved with the stimulus run.
+
+pulseWidthSec = NaN;
+if isfield(runData,'sync') && ...
+        isfield(runData.sync,'expectedOnsetPulseSec')
+    pulseWidthSec = double(runData.sync.expectedOnsetPulseSec);
+end
+if (~isscalar(pulseWidthSec) || ~isfinite(pulseWidthSec) || ...
+        pulseWidthSec <= 0) && isfield(runData,'display') && ...
+        isfield(runData.display,'ifiSec')
+    pulseWidthSec = double(runData.display.ifiSec);
+end
+if (~isscalar(pulseWidthSec) || ~isfinite(pulseWidthSec) || ...
+        pulseWidthSec <= 0) && isfield(runData.sequence,'nominalFrameRate')
+    pulseWidthSec = 1/double(runData.sequence.nominalFrameRate);
+end
+if ~isscalar(pulseWidthSec) || ~isfinite(pulseWidthSec) || pulseWidthSec <= 0
+    pulseWidthSec = 1/60;
+end
 end

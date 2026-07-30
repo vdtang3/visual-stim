@@ -223,13 +223,27 @@ try
     presentation.maximumFrameIntervalSec = zeros(nTrials, 1);
     presentation.actualInterStimulusSec = nan(nTrials, 1);
     runData.presentation = presentation;
+    runData.sync.enabled = logical(cfg.sync.enabled);
     runData.sync.mode = sequence.ttlMode;
+    runData.sync.modeReason = sequence.ttlModeReason;
+    runData.sync.onsetPulseFrames = 1;
+    runData.sync.expectedOnsetPulseSec = ifi;
+    runData.sync.timestampsRepresentPhysicalCommands = ...
+        logical(cfg.sync.enabled);
     runData.sync.port = cfg.sync.port;
     runData.sync.baudRate = cfg.sync.baudRate;
     runData.sync.startedLow = true;
     runData.sync.endedLow = false;
 
     fprintf('[vstim] Sequence ready; initializing TTL and cancel control...\n');
+    expectedFramesPerTrial = max(1, ...
+        round(double(sequence.trials.durationSec)/ifi));
+    if any(expectedFramesPerTrial < 2)
+        error('vstim:StimulusTooShortForFrameTTL', ...
+            ['Every stimulus must last at least two display frames when ' ...
+             'using one-frame TTL pulses. Increase its duration to at ' ...
+             'least %.4f seconds for this display.'], 2*ifi)
+    end
     ttl = vstim.TTLController(cfg.sync);
     if keyboardAvailable
         escapeKey = KbName('ESCAPE');
@@ -352,11 +366,12 @@ try
                 end
                 ttl.high();
                 runData.presentation.ttlHighSec(t) = GetSecs;
-                if sequence.ttlMode == "onset_pulse"
-                    WaitSecs(cfg.sync.onsetPulseSec);
-                    ttl.low();
-                    runData.presentation.ttlLowSec(t) = GetSecs;
-                end
+            elseif frame == 2
+                % Lower the line only after the second frame has appeared.
+                % The pulse therefore spans the first displayed frame and
+                % introduces no blocking wait into stimulus preparation.
+                ttl.low();
+                runData.presentation.ttlLowSec(t) = GetSecs;
             end
             flipTimes(frame) = stimulusOnset;
             missedDeadlines(frame) = max(0, missed);
@@ -484,10 +499,6 @@ try
             Screen('FillRect', win, cfg.display.backgroundGray);
             [vbl, offsetTime] = Screen('Flip', win, vbl + 0.5*ifi);
             runData.presentation.flipOffsetSec(t) = offsetTime;
-            if sequence.ttlMode == "epoch"
-                ttl.low();
-                runData.presentation.ttlLowSec(t) = GetSecs;
-            end
         end
         runData.presentation.frameFlipTimesSec{t} = flipTimes;
         runData.presentation.frameValues{t} = frameValues;

@@ -36,7 +36,6 @@ cfg.sync.port = "COM9";
 cfg.sync.baudRate = 128000;
 cfg.sync.highCommand = 'a';
 cfg.sync.lowCommand = 'b';
-cfg.sync.onsetPulseSec = 0.002;
 cfg.sync.initialLowPauseSec = 0.05;
 
 % Run identity and output.

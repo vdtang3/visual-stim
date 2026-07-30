@@ -257,8 +257,8 @@ mvPerCount = voltsPerCount/channelScale;
 analogScans = int16(round(voltageMv/mvPerCount));
 digitalScans = zeros(nSamples,1,'uint8');
 for i = 1:numel(onsets)
-    if string(sequence.ttlMode)=="onset_pulse"
-        highSamples = round(0.002*fs);
+    if string(sequence.ttlMode)~="epoch"
+        highSamples = round(fs/sequence.nominalFrameRate);
     else
         highSamples = round(sequence.trials.durationSec(i)*fs);
     end

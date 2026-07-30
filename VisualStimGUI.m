@@ -11,6 +11,11 @@ cfg = vstim.defaultConfig(protocolNames(1));
 if ~isempty(latestConfig)
     cfg = latestConfig;
 end
+% The former fixed-duration onset pulse was replaced by a pulse lasting one
+% display frame. Hide the obsolete setting when loading older GUI configs.
+if isfield(cfg.sync,'onsetPulseSec')
+    cfg.sync = rmfield(cfg.sync,'onsetPulseSec');
+end
 
 fig = uifigure('Name', 'In vivo patch visual stimulation', ...
     'Position', [80 80 1220 760], 'Color', [0.96 0.96 0.96], ...
@@ -228,6 +233,9 @@ end
                     'Configuration uses unknown protocol "%s".', loaded.protocol)
             end
             cfg = loaded;
+            if isfield(cfg.sync,'onsetPulseSec')
+                cfg.sync = rmfield(cfg.sync,'onsetPulseSec');
+            end
             protocolDropDown.Value = char(cfg.protocol);
             refreshEditors();
             helpBox.Value = protocolHelp(cfg.protocol);

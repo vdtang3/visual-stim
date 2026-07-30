@@ -161,11 +161,8 @@ end
 sequence.azimuthAxisDeg = azAxis;
 sequence.elevationAxisDeg = elAxis;
 sequence.estimatedDurationSec = sum(trials.durationSec + trials.interStimulusSec);
-if p.interPatternSec == 0
-    sequence.ttlMode = "onset_pulse";
-else
-    sequence.ttlMode = "epoch";
-end
+sequence.ttlMode = "onset_frame_pulse";
+sequence.ttlModeReason = "one_display_frame_pulse_for_every_trial";
 
 function chosen = chooseSeparatedTiles(baseAllowed, gridXY, counts, ...
         numberToChoose, minimumDistance, maximumAttempts)
