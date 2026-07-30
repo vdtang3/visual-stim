@@ -1,12 +1,20 @@
-function runData = runProtocol(cfg, guiMouseCancelOptions)
+function runData = runProtocol(cfg, guiMouseCancelOptions, progressFcn)
 %RUNPROTOCOL Generate and present one complete Psychtoolbox experiment.
 % WaveSurfer should already be acquiring. The function always attempts to
 % leave the Arduino TTL low and saves partial data after an abort or error.
 % guiMouseCancelOptions uses raw mouse-button polling through Screen so the
 % GUI cancel control does not require MATLAB callbacks during presentation.
+% progressFcn is an optional lightweight GUI repaint hook called at 1 Hz.
 
 if nargin < 2
     guiMouseCancelOptions = false;
+end
+if nargin < 3
+    progressFcn = [];
+end
+if ~isempty(progressFcn) && ~isa(progressFcn,'function_handle')
+    error('vstim:InvalidProgressFunction', ...
+        'The presentation progress function must be a function handle.')
 end
 guiCancelTargetBoundsPx = [];
 if isstruct(guiMouseCancelOptions)
@@ -163,6 +171,10 @@ try
     runData.display.guiCancelDiagnostic = "";
     runData.display.guiCancelTargetBoundsPx = ...
         guiCancelTargetBoundsPx;
+    runData.display.guiProgressUpdateHz = double(~isempty(progressFcn));
+    runData.display.guiProgressUpdateCount = 0;
+    runData.display.guiProgressMaximumUpdateSec = 0;
+    runData.display.guiProgressDiagnostic = "";
     guiCancelPollStride = max(1, ...
         round(frameRate/runData.display.guiCancelPollingHz));
     if any(cfg.protocol == ["Fast Gabor tiling", "Targeted Gabor grid", ...
@@ -319,6 +331,7 @@ try
         nTrials);
     vbl = Screen('Flip', win);
     flipImmediatelyAfterISI = false;
+    nextProgressUpdateSec = GetSecs+1;
 
     for t = 1:nTrials
         tr = sequence.trials(t,:);
@@ -379,6 +392,25 @@ try
                 frameValues(frame) = info.centerDeg;
             end
             runData.presentation.framesPresented(t) = frame;
+
+            if ~isempty(progressFcn) && GetSecs >= nextProgressUpdateSec
+                try
+                    progressUpdateStartedSec = GetSecs;
+                    progressFcn([],[]);
+                    progressUpdateDurationSec = ...
+                        GetSecs-progressUpdateStartedSec;
+                    runData.display.guiProgressUpdateCount = ...
+                        runData.display.guiProgressUpdateCount+1;
+                    runData.display.guiProgressMaximumUpdateSec = max( ...
+                        runData.display.guiProgressMaximumUpdateSec, ...
+                        progressUpdateDurationSec);
+                catch progressError
+                    runData.display.guiProgressDiagnostic = ...
+                        string(progressError.message);
+                    progressFcn = [];
+                end
+                nextProgressUpdateSec = GetSecs+1;
+            end
 
             if mouseCancelAvailable && ...
                     mod(frame-1,guiCancelPollStride) == 0

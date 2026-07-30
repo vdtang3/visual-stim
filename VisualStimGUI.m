@@ -88,7 +88,6 @@ cancelButton = uibutton(footer, 'Text', 'Cancel run', ...
     'BackgroundColor', [0.75 0.2 0.2], 'FontColor', [1 1 1]);
 
 regionROI = [];
-presentationTimer = [];
 presentationStartedTic = [];
 presentationEstimatedSec = NaN;
 refreshEditors();
@@ -280,7 +279,8 @@ end
             drawnow;
             cancelOptions.enabled = true;
             cancelOptions.targetBoundsPx = cancelButtonScreenBounds();
-            runData = vstim.runProtocol(cfg, cancelOptions);
+            runData = vstim.runProtocol( ...
+                cfg, cancelOptions, @updatePresentationTimer);
             stopPresentationTimer();
             clearDetectionMetadata();
             if runData.status.completed
@@ -310,20 +310,6 @@ end
         presentationEstimatedSec = estimate.durationSec;
         presentationStartedTic = tic;
         updatePresentationTimer([],[]);
-        try
-            presentationTimer = timer( ...
-                'ExecutionMode','fixedSpacing', ...
-                'Period',1, ...
-                'BusyMode','drop', ...
-                'TimerFcn',@updatePresentationTimer, ...
-                'ErrorFcn',@presentationTimerError);
-            start(presentationTimer);
-        catch timerStartError
-            presentationTimer = [];
-            elapsedLabel.Text = 'Elapsed: unavailable';
-            fprintf('[vstim] GUI elapsed timer unavailable: %s\n', ...
-                timerStartError.message);
-        end
     end
 
     function updatePresentationTimer(~,~)
@@ -335,15 +321,10 @@ end
         elapsedLabel.Text = sprintf('Elapsed: %s / %s', ...
             formatClockDuration(elapsedSec), ...
             formatClockDuration(presentationEstimatedSec));
-    end
-
-    function presentationTimerError(~,~)
-        % A timer display failure must never interrupt stimulus delivery.
-        try
-            elapsedLabel.Text = 'Elapsed: unavailable';
-            fprintf('[vstim] GUI elapsed timer stopped unexpectedly.\n');
-        catch
-        end
+        % Repaint this property without executing GUI callbacks. This keeps
+        % elapsed time visible during the synchronous Psychtoolbox loop and
+        % cannot trigger cancel/drag/button callbacks.
+        drawnow limitrate nocallbacks
     end
 
     function stopPresentationTimer()
@@ -351,14 +332,7 @@ end
             elapsedLabel.Text = "Elapsed: " + ...
                 string(formatClockDuration(toc(presentationStartedTic)));
         end
-        if ~isempty(presentationTimer)
-            try
-                stop(presentationTimer);
-                delete(presentationTimer);
-            catch
-            end
-        end
-        presentationTimer = [];
+        presentationStartedTic = [];
     end
 
     function bounds = cancelButtonScreenBounds
