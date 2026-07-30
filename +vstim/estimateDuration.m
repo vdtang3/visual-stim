@@ -101,6 +101,11 @@ switch string(cfg.protocol)
             (round(p.durationSec*frameRate)/frameRate + p.interStimulusSec);
 end
 
+estimate.stimulusDurationSec = estimate.durationSec;
+estimate.preRunBlankSec = cfg.display.preRunBlankSec;
+estimate.postRunBlankSec = cfg.display.postRunBlankSec;
+estimate.durationSec = estimate.stimulusDurationSec + ...
+    estimate.preRunBlankSec + estimate.postRunBlankSec;
 estimate.formatted = formatDuration(estimate.durationSec);
 end
 

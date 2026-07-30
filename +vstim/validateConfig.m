@@ -8,6 +8,8 @@ mustBeGreaterThan(cfg.display.viewingDistanceCm, 0);
 mustBeGreaterThan(cfg.display.monitorWidthCm, 0);
 mustBeGreaterThan(cfg.display.monitorHeightCm, 0);
 mustBeInRange(cfg.display.backgroundGray, 0, 1);
+mustBeGreaterThanOrEqual(cfg.display.preRunBlankSec, 0);
+mustBeGreaterThanOrEqual(cfg.display.postRunBlankSec, 0);
 mustBeGreaterThanOrEqual(cfg.session.randomSeed, 0);
 if isfield(cfg.session, 'autoDetectWaveSurferFile') && ...
         cfg.session.autoDetectWaveSurferFile

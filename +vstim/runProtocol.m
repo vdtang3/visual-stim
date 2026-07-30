@@ -151,6 +151,11 @@ try
         sequence = vstim.generateSequence(cfg, frameRate);
     end
     runData.sequence = sequence;
+    runData.sequence.estimatedStimulusDurationSec = ...
+        sequence.estimatedDurationSec;
+    runData.sequence.estimatedTotalDurationSec = ...
+        sequence.estimatedDurationSec + cfg.display.preRunBlankSec + ...
+        cfg.display.postRunBlankSec;
     runData.display.ifiSec = ifi;
     runData.display.measuredFrameRate = frameRate;
     runData.display.windowRect = winRect;
@@ -235,6 +240,21 @@ try
     presentation.maximumFrameIntervalSec = zeros(nTrials, 1);
     presentation.actualInterStimulusSec = nan(nTrials, 1);
     runData.presentation = presentation;
+    runData.blank.pre.requestedSec = cfg.display.preRunBlankSec;
+    runData.blank.pre.startedSec = NaN;
+    runData.blank.pre.endedSec = NaN;
+    runData.blank.pre.actualSec = NaN;
+    runData.blank.pre.flipTimesSec = [];
+    runData.blank.pre.missedDeadlineCount = 0;
+    runData.blank.post.requestedSec = cfg.display.postRunBlankSec;
+    runData.blank.post.startedSec = NaN;
+    runData.blank.post.endedSec = NaN;
+    runData.blank.post.actualSec = NaN;
+    runData.blank.post.flipTimesSec = [];
+    runData.blank.post.missedDeadlineCount = 0;
+    runData.display.hiddenWarmupTrialIndices = [];
+    runData.display.hiddenWarmupFlipTimesSec = [];
+    runData.display.hiddenWarmupMissedDeadlineCount = 0;
     runData.sync.enabled = logical(cfg.sync.enabled);
     runData.sync.mode = sequence.ttlMode;
     runData.sync.modeReason = sequence.ttlModeReason;
@@ -333,6 +353,66 @@ try
     flipImmediatelyAfterISI = false;
     nextProgressUpdateSec = GetSecs+1;
 
+    % Exercise each rendering path in the back buffer before recorded
+    % stimulation begins. The buffer is overwritten with gray before every
+    % flip, so none of these representative stimuli becomes visible.
+    warmupTrialIndices = 1;
+    if ismember('stimulusType',sequence.trials.Properties.VariableNames)
+        stimulusTypes = unique(sequence.trials.stimulusType,'stable');
+        warmupTrialIndices = zeros(numel(stimulusTypes),1);
+        for warmupTypeIndex = 1:numel(stimulusTypes)
+            warmupTrialIndices(warmupTypeIndex) = find( ...
+                sequence.trials.stimulusType == ...
+                stimulusTypes(warmupTypeIndex),1,'first');
+        end
+    end
+    warmupFlipTimes = nan(numel(warmupTrialIndices),1);
+    warmupMisses = zeros(numel(warmupTrialIndices),1);
+    for warmupIndex = 1:numel(warmupTrialIndices)
+        trialIndex = warmupTrialIndices(warmupIndex);
+        Screen('FillRect',win,cfg.display.backgroundGray);
+        vstim.drawStimulus(win,geometry,cfg,sequence,trialIndex,1,0);
+        Screen('FillRect',win,cfg.display.backgroundGray);
+        [vbl,warmupFlipTimes(warmupIndex),~,warmupMisses(warmupIndex)] = ...
+            Screen('Flip',win,vbl+0.5*ifi);
+    end
+    runData.display.hiddenWarmupTrialIndices = warmupTrialIndices;
+    runData.display.hiddenWarmupFlipTimesSec = warmupFlipTimes;
+    runData.display.hiddenWarmupMissedDeadlineCount = ...
+        sum(warmupMisses > 0);
+
+    % Hold a visible gray baseline for the requested number of display
+    % intervals. TTL remains low throughout warm-up and pre-roll.
+    runData.blank.pre.startedSec = vbl;
+    nPreRunBlankIntervals = max(0, ...
+        round(cfg.display.preRunBlankSec/ifi));
+    preRunFlipTimes = nan(max(0,nPreRunBlankIntervals-1),1);
+    preRunMisses = zeros(size(preRunFlipTimes));
+    for blankFrame = 1:numel(preRunFlipTimes)
+        Screen('FillRect',win,cfg.display.backgroundGray);
+        [vbl,preRunFlipTimes(blankFrame),~,preRunMisses(blankFrame)] = ...
+            Screen('Flip',win,vbl+0.5*ifi);
+        if ~isempty(progressFcn) && GetSecs >= nextProgressUpdateSec
+            try
+                progressUpdateStartedSec = GetSecs;
+                progressFcn([],[]);
+                progressUpdateDurationSec = GetSecs-progressUpdateStartedSec;
+                runData.display.guiProgressUpdateCount = ...
+                    runData.display.guiProgressUpdateCount+1;
+                runData.display.guiProgressMaximumUpdateSec = max( ...
+                    runData.display.guiProgressMaximumUpdateSec, ...
+                    progressUpdateDurationSec);
+            catch progressError
+                runData.display.guiProgressDiagnostic = ...
+                    string(progressError.message);
+                progressFcn = [];
+            end
+            nextProgressUpdateSec = GetSecs+1;
+        end
+    end
+    runData.blank.pre.flipTimesSec = preRunFlipTimes;
+    runData.blank.pre.missedDeadlineCount = sum(preRunMisses > 0);
+
     for t = 1:nTrials
         tr = sequence.trials(t,:);
         nFrames = max(1, round(tr.durationSec/ifi));
@@ -366,6 +446,11 @@ try
             if frame == 1
                 trialDisplayOnset = stimulusOnset;
                 runData.presentation.flipOnsetSec(t) = stimulusOnset;
+                if t == 1
+                    runData.blank.pre.endedSec = stimulusOnset;
+                    runData.blank.pre.actualSec = stimulusOnset - ...
+                        runData.blank.pre.startedSec;
+                end
                 if t > 1 && ...
                         ~isnan(runData.presentation.flipOffsetSec(t-1))
                     runData.presentation.actualInterStimulusSec(t-1) = ...
@@ -558,6 +643,47 @@ try
             flipImmediatelyAfterISI = true;
         end
     end
+
+    % The final trial has already flipped the display back to gray. Keep
+    % that gray frame visible after normal completion while TTL stays low.
+    runData.blank.post.startedSec = ...
+        runData.presentation.flipOffsetSec(nTrials);
+    nPostRunBlankIntervals = max(0, ...
+        round(cfg.display.postRunBlankSec/ifi));
+    postRunFlipTimes = nan(nPostRunBlankIntervals,1);
+    postRunMisses = zeros(nPostRunBlankIntervals,1);
+    for blankFrame = 1:nPostRunBlankIntervals
+        Screen('FillRect',win,cfg.display.backgroundGray);
+        [vbl,postRunFlipTimes(blankFrame),~,postRunMisses(blankFrame)] = ...
+            Screen('Flip',win,vbl+0.5*ifi);
+        if ~isempty(progressFcn) && GetSecs >= nextProgressUpdateSec
+            try
+                progressUpdateStartedSec = GetSecs;
+                progressFcn([],[]);
+                progressUpdateDurationSec = GetSecs-progressUpdateStartedSec;
+                runData.display.guiProgressUpdateCount = ...
+                    runData.display.guiProgressUpdateCount+1;
+                runData.display.guiProgressMaximumUpdateSec = max( ...
+                    runData.display.guiProgressMaximumUpdateSec, ...
+                    progressUpdateDurationSec);
+            catch progressError
+                runData.display.guiProgressDiagnostic = ...
+                    string(progressError.message);
+                progressFcn = [];
+            end
+            nextProgressUpdateSec = GetSecs+1;
+        end
+    end
+    runData.blank.post.flipTimesSec = postRunFlipTimes;
+    runData.blank.post.missedDeadlineCount = sum(postRunMisses > 0);
+    if isempty(postRunFlipTimes)
+        runData.blank.post.endedSec = ...
+            runData.blank.post.startedSec;
+    else
+        runData.blank.post.endedSec = postRunFlipTimes(end);
+    end
+    runData.blank.post.actualSec = runData.blank.post.endedSec - ...
+        runData.blank.post.startedSec;
 
     runData.display.screenReportedMissedFlipCount = ...
         sum(runData.presentation.missedFlipCount);

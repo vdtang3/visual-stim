@@ -29,6 +29,8 @@ cfg.display.elevationLimitsDeg = atand([-29.6/2, 29.6/2] / 9);
 cfg.display.skipSyncTests = false;
 cfg.display.geometryCorrectionEnabled = false;
 cfg.display.geometryCalibrationFile = "";
+cfg.display.preRunBlankSec = 2;
+cfg.display.postRunBlankSec = 2;
 
 % Arduino serial-to-TTL adapter.
 cfg.sync.enabled = true;

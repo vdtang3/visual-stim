@@ -41,6 +41,13 @@ end
 % Add session fields introduced after this configuration was saved. This
 % keeps newly added controls visible when the GUI autoloads an older file.
 currentDefaults = vstim.defaultConfig(string(cfg.protocol));
+displayFields = fieldnames(currentDefaults.display);
+for i = 1:numel(displayFields)
+    name = displayFields{i};
+    if ~isfield(cfg.display,name)
+        cfg.display.(name) = currentDefaults.display.(name);
+    end
+end
 sessionFields = fieldnames(currentDefaults.session);
 for i = 1:numel(sessionFields)
     name = sessionFields{i};
