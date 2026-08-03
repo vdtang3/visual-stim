@@ -755,11 +755,7 @@ end
 
 runData.status.endedAt = datetime('now');
 stamp = string(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
-sweep = string(cfg.session.wavesurferSweep);
-if strlength(sweep) > 0
-    sweep = "_" + sweep;
-end
-filename = cfg.session.filePrefix + sweep + "_" + stamp + ".mat";
+filename = vstim.stimulusRunFilename(cfg,stamp);
 runData.status.savedFile = fullfile(cfg.session.outputDirectory, filename);
 save(runData.status.savedFile, 'runData', '-v7.3');
 

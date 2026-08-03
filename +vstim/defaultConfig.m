@@ -45,7 +45,11 @@ cfg.session.outputDirectory = fullfile(pwd, "stimulus_runs");
 cfg.session.filePrefix = "visual_stim";
 cfg.session.wavesurferSweep = "";
 cfg.session.autoDetectWaveSurferFile = false;
-cfg.session.wavesurferSearchDirectory = "";
+if ispc
+    cfg.session.wavesurferParentDirectory = "D:\ephys\btsp";
+else
+    cfg.session.wavesurferParentDirectory = "";
+end
 cfg.session.wavesurferMaximumAgeMinutes = 5;
 cfg.session.notes = "";
 cfg.session.randomSeed = 1;
@@ -229,6 +233,16 @@ if isfield(installation, 'session')
     for i = 1:numel(names)
         cfg.session.(names{i}) = string(installation.session.(names{i}));
     end
+end
+if isfield(cfg.session,'wavesurferSearchDirectory')
+    oldDirectory = string(cfg.session.wavesurferSearchDirectory);
+    [oldParent,oldLeaf] = fileparts(oldDirectory);
+    if ~isempty(regexp(char(oldLeaf),'^\d{8}$','once'))
+        cfg.session.wavesurferParentDirectory = string(oldParent);
+    else
+        cfg.session.wavesurferParentDirectory = oldDirectory;
+    end
+    cfg.session = rmfield(cfg.session,'wavesurferSearchDirectory');
 end
 cfg = vstim.normalizeDisplayGeometry(cfg);
 if any(cfg.protocol == ["Targeted Gabor grid", "Gabor + inverse stimuli"])

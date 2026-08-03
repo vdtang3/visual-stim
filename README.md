@@ -151,6 +151,15 @@ runData.status       completion and abort information
 ```
 
 The output directory and optional WaveSurfer sweep label are set in the GUI.
+For automatic WaveSurfer association, the Session tab stores a parent
+directory (`D:\ephys\btsp` by default on Windows). Each run searches only the
+current local date subfolder in `yyyyMMdd` format, for example
+`D:\ephys\btsp\20260803`.
+When a recent H5 is detected, that dated WaveSurfer folder becomes the output
+directory for that stimulus run; otherwise the configured output directory is
+used as the fallback. Run filenames include the detected WaveSurfer basename
+when available and always include the stimulus protocol, for example
+`cell_001_fast_gabor_tiling_visual_stim_20260803_143015.mat`.
 
 ## Quick receptive-field analysis
 

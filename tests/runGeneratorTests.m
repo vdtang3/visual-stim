@@ -93,5 +93,37 @@ mockRun.status.completed = false;
 quality = vstim.assessPresentationQuality(mockRun);
 assert(~quality.pass && quality.verdict=="INCOMPLETE")
 
+waveSurferParent = string(tempname);
+waveSurferDate = string(datetime('today','Format','yyyyMMdd'));
+waveSurferDateFolder = fullfile(waveSurferParent,waveSurferDate);
+mkdir(waveSurferDateFolder);
+waveSurferTestCleanup = onCleanup( ...
+    @() rmdir(char(waveSurferParent),'s'));
+waveSurferTestFile = fullfile(waveSurferDateFolder,'test_sweep.h5');
+fileIdentifier = fopen(waveSurferTestFile,'w');
+assert(fileIdentifier>=0)
+fclose(fileIdentifier);
+session.autoDetectWaveSurferFile = true;
+session.wavesurferParentDirectory = waveSurferParent;
+session.wavesurferMaximumAgeMinutes = 5;
+detection = vstim.detectLatestWaveSurferFile(session);
+assert(detection.found)
+assert(detection.parentDirectory==waveSurferParent)
+assert(detection.dateFolderName==waveSurferDate)
+assert(detection.folder==string(waveSurferDateFolder))
+assert(detection.filename=="test_sweep.h5")
+clear waveSurferTestCleanup
+
+filenameCfg = vstim.defaultConfig("Fast Gabor tiling");
+filenameCfg.session.filePrefix = "visual_stim";
+filenameCfg.session.wavesurferSweep = "cell_001.h5";
+filename = vstim.stimulusRunFilename(filenameCfg,"20260803_143015");
+assert(filename== ...
+    "cell_001_fast_gabor_tiling_visual_stim_20260803_143015.mat")
+filenameCfg.session.wavesurferSweep = "";
+filename = vstim.stimulusRunFilename(filenameCfg,"20260803_143015");
+assert(filename== ...
+    "fast_gabor_tiling_visual_stim_20260803_143015.mat")
+
 fprintf('All generator tests passed.\n');
 end

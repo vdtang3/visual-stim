@@ -252,19 +252,36 @@ end
     end
 
     function runPressed(~, ~)
+        configuredOutputDirectory = string(cfg.session.outputDirectory);
+        configuredWaveSurferSweep = string(cfg.session.wavesurferSweep);
         try
             readEditors();
+            configuredOutputDirectory = string(cfg.session.outputDirectory);
+            configuredWaveSurferSweep = string(cfg.session.wavesurferSweep);
             detection = vstim.detectLatestWaveSurferFile(cfg.session);
             cfg.session.wavesurferDetectionEnabled = detection.enabled;
             cfg.session.wavesurferDetected = detection.found;
             cfg.session.wavesurferFile = detection.file;
             cfg.session.wavesurferFilename = detection.filename;
+            cfg.session.wavesurferResolvedDateFolder = detection.folder;
+            cfg.session.wavesurferDateFolderName = detection.dateFolderName;
             cfg.session.wavesurferFolder = detection.folder;
             cfg.session.wavesurferFileModifiedAt = ...
                 string(detection.modifiedAt);
             cfg.session.wavesurferFileAgeMinutes = detection.ageMinutes;
             cfg.session.wavesurferDetectionMessage = ...
                 string(detection.message);
+            cfg.session.configuredFallbackOutputDirectory = ...
+                configuredOutputDirectory;
+            if detection.found
+                cfg.session.outputDirectory = detection.folder;
+                cfg.session.outputDirectorySource = ...
+                    "detected_wavesurfer_date_folder";
+            else
+                cfg.session.outputDirectory = configuredOutputDirectory;
+                cfg.session.outputDirectorySource = ...
+                    "configured_fallback";
+            end
             if detection.found && ...
                     strlength(string(cfg.session.wavesurferSweep)) == 0
                 [~, detectedSweep] = fileparts(char(detection.filename));
@@ -282,7 +299,6 @@ end
             runData = vstim.runProtocol( ...
                 cfg, cancelOptions, @updatePresentationTimer);
             stopPresentationTimer();
-            clearDetectionMetadata();
             if runData.status.completed
                 statusLabel.Text = "Completed and saved: " + ...
                     string(runData.status.savedFile) + ". " + ...
@@ -296,11 +312,13 @@ end
             end
         catch ME
             stopPresentationTimer();
-            clearDetectionMetadata();
             statusLabel.Text = 'Presentation failed; TTL cleanup attempted';
             statusLabel.FontColor = [0.8 0.1 0.1];
             uialert(fig, ME.message, 'Stimulus error');
         end
+        cfg.session.outputDirectory = configuredOutputDirectory;
+        cfg.session.wavesurferSweep = configuredWaveSurferSweep;
+        clearDetectionMetadata();
         setPresentationControls(false);
     end
 
@@ -381,8 +399,11 @@ end
     function clearDetectionMetadata()
         names = {'wavesurferDetectionEnabled', 'wavesurferDetected', ...
             'wavesurferFile', 'wavesurferFilename', 'wavesurferFolder', ...
+            'wavesurferResolvedDateFolder', 'wavesurferDateFolderName', ...
             'wavesurferFileModifiedAt', 'wavesurferFileAgeMinutes', ...
-            'wavesurferDetectionMessage'};
+            'wavesurferDetectionMessage', ...
+            'configuredFallbackOutputDirectory', ...
+            'outputDirectorySource'};
         present = names(isfield(cfg.session, names));
         if ~isempty(present)
             cfg.session = rmfield(cfg.session, present);

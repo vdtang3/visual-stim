@@ -49,6 +49,22 @@ for i = 1:numel(displayFields)
     end
 end
 sessionFields = fieldnames(currentDefaults.session);
+% Older configurations stored the exact folder to search. Convert a dated
+% yyyyMMdd folder back to its parent; otherwise treat the old value as the
+% parent itself.
+if ~isfield(cfg.session,'wavesurferParentDirectory') && ...
+        isfield(cfg.session,'wavesurferSearchDirectory')
+    oldDirectory = string(cfg.session.wavesurferSearchDirectory);
+    [oldParent,oldLeaf] = fileparts(oldDirectory);
+    if ~isempty(regexp(char(oldLeaf),'^\d{8}$','once'))
+        cfg.session.wavesurferParentDirectory = string(oldParent);
+    else
+        cfg.session.wavesurferParentDirectory = oldDirectory;
+    end
+end
+if isfield(cfg.session,'wavesurferSearchDirectory')
+    cfg.session = rmfield(cfg.session,'wavesurferSearchDirectory');
+end
 for i = 1:numel(sessionFields)
     name = sessionFields{i};
     if ~isfield(cfg.session, name)

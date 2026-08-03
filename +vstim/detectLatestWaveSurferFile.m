@@ -1,11 +1,14 @@
 function detection = detectLatestWaveSurferFile(session)
-%DETECTLATESTWAVESURFERFILE Find the newest recent H5 acquisition file.
+%DETECTLATESTWAVESURFERFILE Find today's newest recent H5 acquisition file.
 
 detection.enabled = logical(session.autoDetectWaveSurferFile);
 detection.found = false;
 detection.file = "";
 detection.filename = "";
-detection.folder = string(session.wavesurferSearchDirectory);
+detection.parentDirectory = string(session.wavesurferParentDirectory);
+detection.dateFolderName = string(datetime('today','Format','yyyyMMdd'));
+detection.folder = string(fullfile(detection.parentDirectory, ...
+    detection.dateFolderName));
 detection.modifiedAt = NaT;
 detection.ageMinutes = NaN;
 detection.maximumAgeMinutes = session.wavesurferMaximumAgeMinutes;
@@ -16,13 +19,17 @@ if ~detection.enabled
 end
 folder = char(detection.folder);
 if isempty(folder) || ~isfolder(folder)
-    detection.message = "WaveSurfer folder not found; continuing without association";
+    detection.message = sprintf( ...
+        ['Today''s WaveSurfer folder was not found: %s; continuing ' ...
+         'without association'], folder);
     return
 end
 
 files = [dir(fullfile(folder, '*.h5')); dir(fullfile(folder, '*.H5'))];
 if isempty(files)
-    detection.message = "No WaveSurfer H5 file found; continuing without association";
+    detection.message = sprintf( ...
+        ['No WaveSurfer H5 file found in today''s folder %s; ' ...
+         'continuing without association'], folder);
     return
 end
 [~, newest] = max([files.datenum]);
