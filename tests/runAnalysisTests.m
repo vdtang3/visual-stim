@@ -5,6 +5,7 @@ addpath(fileparts(fileparts(mfilename('fullpath'))));
 rng(7);
 testStartupTTLAlignment;
 testFramePulseAlignment;
+testRunFilePairing;
 testFlashedBars;
 testGaborGrid;
 testFlatGaborRejected;
@@ -35,6 +36,29 @@ assert(alignment.ignoredLeadingEdgeCount==numel(startupOnsets));
 assert(alignment.ignoredTrailingEdgeCount==0);
 assert(alignment.completeMatch);
 assert(~alignment.exactRecordedCountMatch);
+end
+
+function testRunFilePairing
+testFolder = string(tempname);
+mkdir(testFolder);
+testCleanup = onCleanup(@() rmdir(char(testFolder),'s'));
+h5File = fullfile(testFolder,'cell_001.h5');
+fileIdentifier = fopen(h5File,'w');
+assert(fileIdentifier>=0)
+fclose(fileIdentifier);
+runData.params = vstim.defaultConfig("Fast Gabor tiling");
+runData.params.session.wavesurferFile = string(h5File);
+runData.sequence = struct();
+runData.presentation = struct();
+runData.sync = struct();
+runData.status = struct();
+runDataFile = fullfile(testFolder, ...
+    'cell_001_fast_gabor_tiling_visual_stim_20260803_143015.mat');
+save(runDataFile,'runData','-v7.3');
+loadedRun = vstim.loadRun(runDataFile);
+assert(vstim.detectedH5ForRun(loadedRun)==string(h5File))
+assert(isfile(vstim.detectedH5ForRun(loadedRun)))
+clear testCleanup
 end
 
 function testFramePulseAlignment

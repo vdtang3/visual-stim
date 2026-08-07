@@ -34,7 +34,8 @@ if isempty(files)
 end
 [~, newest] = max([files.datenum]);
 candidate = files(newest);
-ageMinutes = max(0, (now-candidate.datenum)*24*60);
+modifiedAt = datetime(candidate.datenum,'ConvertFrom','datenum');
+ageMinutes = max(0,minutes(datetime('now')-modifiedAt));
 if ageMinutes > detection.maximumAgeMinutes
     detection.message = sprintf( ...
         'Newest WaveSurfer file is %.1f min old; continuing without association', ...
@@ -46,8 +47,7 @@ detection.found = true;
 detection.file = string(fullfile(candidate.folder, candidate.name));
 detection.filename = string(candidate.name);
 detection.folder = string(candidate.folder);
-detection.modifiedAt = datetime(candidate.datenum, ...
-    'ConvertFrom', 'datenum');
+detection.modifiedAt = modifiedAt;
 detection.ageMinutes = ageMinutes;
 detection.message = sprintf( ...
     'Found WaveSurfer file %s (%.1f min old); saved in run metadata', ...

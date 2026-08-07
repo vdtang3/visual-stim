@@ -700,7 +700,7 @@ end
 end
 
 function [h5File,pairing] = chooseH5ForRun(runData,runDataFile)
-detected = detectedH5(runData);
+detected = vstim.detectedH5ForRun(runData);
 h5File = "";
 pairing = "";
 if strlength(detected)>0 && isfile(detected)
@@ -725,19 +725,6 @@ end
 if ~isequal(file,0)
     h5File = string(fullfile(path,file));
     pairing = "Manual";
-end
-end
-
-function detected = detectedH5(runData)
-detected = "";
-if ~isfield(runData.params,'session')
-    return
-end
-s = runData.params.session;
-if isfield(s,'wavesurferFile') && strlength(string(s.wavesurferFile))>0
-    detected = string(s.wavesurferFile);
-elseif isfield(s,'wavesurferFolder') && isfield(s,'wavesurferFilename')
-    detected = string(fullfile(s.wavesurferFolder,s.wavesurferFilename));
 end
 end
 
