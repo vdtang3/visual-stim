@@ -43,6 +43,23 @@ flashed.stimulus.interStimulusSec = 0.1;
 sequence = vstim.generateSequence(flashed, 60);
 assert(sequence.ttlMode=="onset_frame_pulse")
 
+% Flashed bars use the same mapping rectangle as moving bars and retain
+% their requested width even when their center lies on a region edge.
+mappingRect = [100 200 500 600];
+verticalRect = vstim.barRectanglePx( ...
+    mappingRect,[300 400],[40 60],"azimuth");
+assert(isequal(verticalRect,[280 200 320 600]))
+horizontalRect = vstim.barRectanglePx( ...
+    mappingRect,[300 250],[40 60],"elevation");
+assert(isequal(horizontalRect,[100 220 500 280]))
+edgeRect = vstim.barRectanglePx( ...
+    mappingRect,[100 400],[40 60],"azimuth");
+assert(isequal(edgeRect,[100 200 120 600]))
+assert(all(verticalRect([1 3]) >= mappingRect(1)) && ...
+    all(verticalRect([1 3]) <= mappingRect(3)))
+assert(all(horizontalRect([2 4]) >= mappingRect(2)) && ...
+    all(horizontalRect([2 4]) <= mappingRect(4)))
+
 aperture = vstim.circularApertureGeometry(20,10,12);
 assert(aperture.supportDiameterPx==360);
 assert(abs(aperture.halfContrastRadiusPx-120)<1e-12);
@@ -124,6 +141,24 @@ filenameCfg.session.wavesurferSweep = "";
 filename = vstim.stimulusRunFilename(filenameCfg,"20260803_143015");
 assert(filename== ...
     "fast_gabor_tiling_visual_stim_20260803_143015.mat")
+
+% One GUI file retains independent parameters for multiple protocols and
+% restores the protocol that was active when the file was saved.
+movingCfg = vstim.defaultConfig("Moving bars");
+movingCfg.stimulus.barWidthDeg = 12.5;
+sparseCfg = vstim.defaultConfig("Sparse noise");
+sparseCfg.stimulus.totalDurationSec = 47;
+protocolConfigs = struct;
+protocolConfigs.(vstim.protocolConfigKey(movingCfg.protocol)) = movingCfg;
+protocolConfigs.(vstim.protocolConfigKey(sparseCfg.protocol)) = sparseCfg;
+guiConfigFilename = vstim.saveGuiConfig(sparseCfg,protocolConfigs);
+guiConfigCleanup = onCleanup(@() delete(guiConfigFilename));
+[loadedCfg,loadedProtocolConfigs] = ...
+    vstim.loadGuiConfig(guiConfigFilename);
+assert(loadedCfg.protocol=="Sparse noise")
+assert(loadedProtocolConfigs.MovingBars.stimulus.barWidthDeg==12.5)
+assert(loadedProtocolConfigs.SparseNoise.stimulus.totalDurationSec==47)
+clear guiConfigCleanup
 
 fprintf('All generator tests passed.\n');
 end

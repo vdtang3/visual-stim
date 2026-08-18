@@ -34,6 +34,27 @@ trials.onsetSec = (trials.onsetSample-1)/data.meta.fs;
 trials.offsetSample = nan(nMatched,1);
 trials.recordedDurationSec = nan(nMatched,1);
 
+% A Screen TTL marks each sweep onset only. Spatial position within a
+% moving-bar sweep comes from its saved frame trajectory and presentation
+% times, never from the interval between successive TTL pulses.
+trials.framePresentationTimesSec = cell(nMatched,1);
+trials.frameTimingSource = repmat("nominal",nMatched,1);
+if isfield(runData,'presentation') && istable(runData.presentation)
+    names = runData.presentation.Properties.VariableNames;
+    if all(ismember({'frameFlipTimesSec','ttlHighSec'},names))
+        for i = 1:nMatched
+            flipTimes = double(runData.presentation.frameFlipTimesSec{i}(:));
+            ttlTime = double(runData.presentation.ttlHighSec(i));
+            if ~isempty(flipTimes) && isfinite(ttlTime) && ...
+                    all(isfinite(flipTimes)) && ...
+                    all(diff(flipTimes) > 0)
+                trials.framePresentationTimesSec{i} = flipTimes-ttlTime;
+                trials.frameTimingSource(i) = "actual";
+            end
+        end
+    end
+end
+
 % Record the corresponding falling edge for every TTL convention. For
 % onset-frame pulses this measures synchronization quality; for legacy
 % epoch files it retains the stimulus-duration measurement.

@@ -11,10 +11,63 @@ testGaborGrid;
 testFlatGaborRejected;
 testSparseNoise;
 testMovingBars;
+testMovingBarFrameTiming;
+testRfPreprocessing;
 testConsensus;
 testRobustConsensus;
 testRunSpecificOptions;
 fprintf('All spike RF analysis tests passed.\n');
+end
+
+function testMovingBarFrameTiming
+trial = table(1.0,{[0;10;20;30]}, ...
+    'VariableNames',{'durationSec','frameCentersDeg'});
+
+% Uniform actual timing agrees with frame-index timing.
+trial.framePresentationTimesSec = {[0;0.1;0.2;0.3]};
+[position,source] = vstim.movingBarSpikePositions(0.15,trial,0.1);
+assert(source=="actual" && abs(position-15)<1e-12)
+
+% A late second flip holds back the reconstructed trajectory.
+trial.framePresentationTimesSec = {[0;0.2;0.3;0.4]};
+position = vstim.movingBarSpikePositions(0.15,trial,0.1);
+assert(abs(position-7.5)<1e-12)
+
+% An extended interval (a dropped refresh) likewise follows saved timing.
+trial.framePresentationTimesSec = {[0;0.1;0.3;0.4]};
+position = vstim.movingBarSpikePositions(0.2,trial,0.1);
+assert(abs(position-15)<1e-12)
+
+% Old files use (frame index - 1)*IFI, not linspace over trial duration.
+trial.framePresentationTimesSec = {[]};
+[position,source,frameTimes] = ...
+    vstim.movingBarSpikePositions(0.15,trial,0.1);
+assert(source=="nominal" && abs(position-15)<1e-12)
+assert(isequal(frameTimes,[0;0.1;0.2;0.3]))
+end
+
+function testRfPreprocessing
+fs = 20000;
+t = (0:fs-1)'/fs;
+volt = -65 + 0.15*sin(2*pi*7*t);
+spikeSamples = [4000;10000;16000];
+shape = [0;12;35;48;35;12;0];
+for i = 1:numel(spikeSamples)
+    indices = spikeSamples(i)+(-3:3)';
+    volt(indices) = volt(indices)+shape;
+end
+data.ai.volt = volt;
+data.meta.fs = fs;
+data.meta.samples = numel(volt);
+processed = vstim.preprocessForAnalysis(data);
+assert(isfield(processed,'spikes') && ...
+    isfield(processed.spikes,'spks'))
+[~,referenceSpikes] = getSpikes(processed.proc.volt,fs);
+assert(isequal(processed.spikes.spks,referenceSpikes))
+assert(numel(processed.spikes.spks)==numel(spikeSamples))
+assert(~isfield(processed.proc,'plat_filt'))
+assert(~isfield(processed.proc,'psp_filt'))
+assert(~isfield(processed,'plateaus'))
 end
 
 function testStartupTTLAlignment
@@ -239,6 +292,8 @@ result = vstim.analyzeSpikeReceptiveField(runData,data, ...
     'spikeBinMs',10,'positionBinDeg',5));
 assert(abs(result.rfCenterAzimuthDeg-5)<9);
 assert(abs(result.rfCenterElevationDeg+5)<9);
+assert(result.movingBarTiming.nominalTrialCount==height(trials))
+assert(any(contains(result.warnings,"nominal index-based frame timing")))
 end
 
 function testConsensus

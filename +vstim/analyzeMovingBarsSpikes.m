@@ -7,6 +7,17 @@ result.trialCount = height(trials);
 result.spikeCount = numel(data.spikes.spks);
 result.sync = rmfield(alignment,'trials');
 result.warnings = alignment.warnings;
+[frameIntervalSec,nominalIntervalSource] = nominalFrameInterval(runData);
+actualTiming = trials.frameTimingSource == "actual";
+result.movingBarTiming.actualTrialCount = sum(actualTiming);
+result.movingBarTiming.nominalTrialCount = sum(~actualTiming);
+result.movingBarTiming.nominalFrameIntervalSec = frameIntervalSec;
+result.movingBarTiming.nominalFrameIntervalSource = nominalIntervalSource;
+if any(~actualTiming)
+    result.warnings(end+1) = sprintf( ...
+        ['Used nominal index-based frame timing for %d moving-bar sweep(s) ' ...
+         'because actual saved flip timing was unavailable.'],sum(~actualTiming));
+end
 if height(trials) < options.minimumSweeps
     result.warnings(end+1) = sprintf( ...
         'Only %d sweeps matched; the configured minimum is %d.', ...
@@ -17,7 +28,8 @@ lags = options.spikeLatencyRangeMs(1):options.spikeBinMs: ...
     options.spikeLatencyRangeMs(2);
 agreement = nan(numel(lags),1);
 for i = 1:numel(lags)
-    profiles = buildProfiles(trials,data,lags(i),options.positionBinDeg);
+    profiles = buildProfiles(trials,data,lags(i),options.positionBinDeg, ...
+        frameIntervalSec);
     agreement(i) = oppositeDirectionAgreement(profiles);
 end
 if all(~isfinite(agreement))
@@ -28,7 +40,8 @@ else
     [~,best] = max(agreement);
 end
 latency = lags(best);
-profiles = buildProfiles(trials,data,latency,options.positionBinDeg);
+profiles = buildProfiles(trials,data,latency,options.positionBinDeg, ...
+    frameIntervalSec);
 [azFit,azProfile] = fitAxis(profiles,"azimuth");
 [elFit,elProfile] = fitAxis(profiles,"elevation");
 result.preferredLatencyMs = latency;
@@ -64,7 +77,7 @@ for b = 1:options.bootstrapRepetitions
     idx = vstim.stratifiedBootstrapIndices(trials, ...
         {'direction','polarity'});
     bootProfiles = buildProfiles(trials(idx,:),data,latency, ...
-        options.positionBinDeg);
+        options.positionBinDeg,frameIntervalSec);
     azBoot = fitAxis(bootProfiles,"azimuth");
     elBoot = fitAxis(bootProfiles,"elevation");
     centers(b,:) = [azBoot.center,elBoot.center];
@@ -88,7 +101,8 @@ if result.edgeWarning
 end
 end
 
-function profiles = buildProfiles(trials,data,latencyMs,binWidthDeg)
+function profiles = buildProfiles( ...
+        trials,data,latencyMs,binWidthDeg,frameIntervalSec)
 spikes = double(data.spikes.spks(:));
 fs = data.meta.fs;
 axesUsed = unique(trials.axis);
@@ -101,7 +115,7 @@ for a = 1:numel(axesUsed)
     hi = max(allCenters);
     edges = lo:binWidthDeg:hi;
     if edges(end) < hi
-        edges(end+1) = hi;
+        edges(end+1) = hi; %#ok<AGROW>
     end
     centers = (edges(1:end-1)+edges(2:end))/2;
     directions = unique(trials.direction(axisRows));
@@ -117,9 +131,8 @@ for a = 1:numel(axesUsed)
                 duration = tr.durationSec;
                 visualTime = (spikes-onset)/fs-latencyMs/1000;
                 use = visualTime >= 0 & visualTime < duration;
-                spikePosition = interp1( ...
-                    linspace(0,duration,numel(tr.frameCentersDeg{1})), ...
-                    tr.frameCentersDeg{1},visualTime(use),'linear');
+                spikePosition = vstim.movingBarSpikePositions( ...
+                    visualTime(use),tr,frameIntervalSec);
                 counts = histcounts(spikePosition,edges);
                 occupancy = duration/numel(centers);
                 baseline = sum(spikes >= onset-round(0.1*fs) & ...
@@ -135,6 +148,21 @@ for a = 1:numel(axesUsed)
             profiles = [profiles;block]; %#ok<AGROW>
         end
     end
+end
+end
+
+function [intervalSec,source] = nominalFrameInterval(runData)
+intervalSec = NaN;
+source = "trial duration / frame count";
+if isfield(runData,'display') && isfield(runData.display,'ifiSec')
+    intervalSec = double(runData.display.ifiSec);
+    source = "measured display IFI";
+elseif isfield(runData.sequence,'nominalFrameRate')
+    intervalSec = 1/double(runData.sequence.nominalFrameRate);
+    source = "nominal frame rate";
+end
+if ~isscalar(intervalSec) || ~isfinite(intervalSec) || intervalSec <= 0
+    intervalSec = NaN;
 end
 end
 

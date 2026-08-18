@@ -1,9 +1,7 @@
 function result = analyzeSpikeReceptiveField(runData,data,overrides)
 %ANALYZESPIKERECEPTIVEFIELD Dispatch the approved quick spike analysis.
 %
-% data must already have passed through preprocess(data,"sweep",true).
-% The force flag is important here: this quick-look tool never applies the
-% laboratory dataset-exclusion criteria.
+% data must already have passed through vstim.preprocessForAnalysis.
 
 if nargin < 3
     overrides = struct();
@@ -16,8 +14,8 @@ if protocol == "Gabor + inverse stimuli"
 end
 if ~isfield(data,'spikes') || ~isfield(data.spikes,'spks')
     error('vstim:PreprocessingRequired', ...
-        ['No detected spikes were found. Run the standard in-vivo-patch ' ...
-         'preprocess(data,"sweep",true) pipeline first.'])
+        ['No detected spikes were found. Run ' ...
+         'vstim.preprocessForAnalysis first.'])
 end
 
 options = vstim.analysisOptions(runData,overrides);

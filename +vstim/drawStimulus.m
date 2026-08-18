@@ -38,19 +38,21 @@ switch string(cfg.protocol)
 
     case "Flashed bars"
         color = vstim.polarityColor(tr.polarity, cfg);
+        barWidthPx = geometry.sizeDegToPx( ...
+            [p.barWidthDeg, p.barWidthDeg]);
         if tr.axis == "azimuth"
             centerPx = [geometry.degToPxX(tr.positionDeg), ...
-                geometry.centerPx(2)];
-            barWidthPx = geometry.sizeDegToPx([p.barWidthDeg, p.barWidthDeg]);
-            sizePx = [barWidthPx(1), RectHeight(geometry.windowRect)];
+                mean(mappingRectPx([2 4]))];
         else
-            centerPx = [geometry.centerPx(1), ...
+            centerPx = [mean(mappingRectPx([1 3])), ...
                 geometry.degToPxY(tr.positionDeg)];
-            barWidthPx = geometry.sizeDegToPx([p.barWidthDeg, p.barWidthDeg]);
-            sizePx = [RectWidth(geometry.windowRect), barWidthPx(2)];
         end
-        rect = CenterRectOnPointd([0 0 sizePx], centerPx(1), centerPx(2));
-        Screen('FillRect', win, color, rect);
+        rect = vstim.barRectanglePx( ...
+            mappingRectPx,centerPx,barWidthPx,tr.axis);
+        if rect(3) > rect(1) && rect(4) > rect(2)
+            Screen('FillRect', win, color, rect);
+        end
+        drawInfo.rectPx = rect;
 
     case "Sparse noise"
         pattern = sequence.stimulusMatrix(:, trialIndex);

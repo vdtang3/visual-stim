@@ -104,9 +104,13 @@ config/
     └── *.mat               timestamped experiment configurations
 ```
 
-**Save configuration** writes every current GUI parameter to `config/gui/`.
-The newest saved configuration is loaded automatically when the GUI starts.
-**Load configuration** selects any saved file manually.
+**Save configuration** writes the current parameters for every stimulus
+protocol, together with the shared display, TTL, session, and analysis settings,
+to one file in `config/gui/`. Switching protocols retains each protocol's edits
+for the rest of the GUI session. The newest saved configuration is loaded
+automatically when the GUI starts, restoring the last active protocol and all
+of the stored protocol parameters. **Load configuration** selects any saved
+file manually. Older single-protocol configuration files remain supported.
 
 ## Synchronization contract
 
@@ -174,12 +178,23 @@ an existing WaveSurfer H5, the GUI shows that match and asks whether to use it
 or choose a different H5. A missing or moved H5 can always be selected
 manually.
 
-The quick analysis uses the copied laboratory `loadws` followed by the copied
-standard `preprocess(data,"sweep",true)` implementation. These files and their
-complete MATLAB/MEX dependency set are stored under
-`vendor/in_vivo_patch/`; the original repository is not required at runtime.
-Dataset exclusion remains bypassed. Detected spikes are the only response
-source in this version; spike-removed Vm is reserved as a future fallback.
+The quick analysis uses the copied laboratory `loadws` followed by
+`vstim.preprocessForAnalysis`. This RF-only path retains the standard voltage
+low-pass filter, sharp-negative-artifact cleanup, drift adjustment, and
+vendored spike detection/removal. It does not load a crop table, validate or
+exclude datasets, filter plateaus/PSPs, extract plateaus, or calculate Vm
+summary statistics. The vendored helpers and MATLAB/MEX loading dependencies
+are stored under `vendor/in_vivo_patch/`; the original repository is not
+required at runtime. Detected spikes are the only response source in this
+version; spike-removed Vm is reserved as a future fallback.
+
+Moving-bar runs save the actual flip time and center value of every displayed
+frame. Analysis anchors each sweep to its recorded Screen TTL onset and maps
+within-sweep spike times through those saved flip times; inter-TTL spacing is
+not a spatial coordinate. Older files without per-frame flip times use
+`(frame index - 1) * frame interval`, preferring the measured display IFI and
+then the nominal frame rate. Results report when this nominal fallback was
+used.
 
 Implemented quick analyses are moving bars, flashed bars, sparse noise, fast
 Gabor tiling, and targeted Gabor grids. Fast and targeted Gabor responses are

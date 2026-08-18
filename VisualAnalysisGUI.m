@@ -222,9 +222,8 @@ consensusLabel = uilabel(footer,'Text','No consensus generated', ...
             runData = vstim.loadRun(entry.runDataFile);
             data = vstim.loadWaveSurferForAnalysis( ...
                 char(entry.waveSurferFile));
-            statusLabel.Text = 'Running standard spike detection…';
+            statusLabel.Text = 'Running RF spike preprocessing…';
             drawnow;
-            % force=true bypasses validateDataset by design.
             data = vstim.preprocessForAnalysis(data);
             statusLabel.Text = 'Estimating RF and bootstrap uncertainty…';
             drawnow;
@@ -233,7 +232,7 @@ consensusLabel = uilabel(footer,'Text','No consensus generated', ...
             result.runDataFile = entry.runDataFile;
             result.waveSurferFile = entry.waveSurferFile;
             result.preprocessing = ...
-                'vstim.preprocessForAnalysis (forced standard sweep)';
+                'vstim.preprocessForAnalysis (RF-only)';
             cellSession.runs(selectedRow).analysisResult = result;
             cellSession.runs(selectedRow).dataMetrics = ...
                 vstim.analysisDataMetrics(runData,data,result);

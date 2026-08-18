@@ -7,9 +7,17 @@ protocolNames = ["Moving bars", "Flashed bars", "Sparse noise", ...
     "Fast Gabor tiling", "Targeted Gabor grid", ...
     "Gabor + inverse stimuli"];
 cfg = vstim.defaultConfig(protocolNames(1));
-[latestConfig, latestConfigFile] = vstim.loadLatestGuiConfig;
+[latestConfig, latestConfigFile, protocolConfigs] = ...
+    vstim.loadLatestGuiConfig;
 if ~isempty(latestConfig)
     cfg = latestConfig;
+end
+protocolConfigs.(vstim.protocolConfigKey(cfg.protocol)) = cfg;
+for startupProtocol = protocolNames
+    key = vstim.protocolConfigKey(startupProtocol);
+    if ~isfield(protocolConfigs,key)
+        protocolConfigs.(key) = vstim.defaultConfig(startupProtocol);
+    end
 end
 % The former fixed-duration onset pulse was replaced by a pulse lasting one
 % display frame. Hide the obsolete setting when loading older GUI configs.
@@ -128,7 +136,17 @@ end
             return
         end
 
-        next = vstim.defaultConfig(string(protocolDropDown.Value));
+        protocolConfigs.(vstim.protocolConfigKey(previous.protocol)) = previous;
+        nextProtocol = string(protocolDropDown.Value);
+        nextKey = vstim.protocolConfigKey(nextProtocol);
+        if isfield(protocolConfigs,nextKey)
+            next = protocolConfigs.(nextKey);
+        else
+            next = vstim.defaultConfig(nextProtocol);
+        end
+        if isfield(next.sync,'onsetPulseSec')
+            next.sync = rmfield(next.sync,'onsetPulseSec');
+        end
         next.display = previous.display;
         next.sync = previous.sync;
         next.session = previous.session;
@@ -209,6 +227,7 @@ end
 
     function resetPressed(~, ~)
         cfg = vstim.defaultConfig(string(protocolDropDown.Value));
+        protocolConfigs.(vstim.protocolConfigKey(cfg.protocol)) = cfg;
         refreshEditors();
         refreshTargetMap();
     end
@@ -216,7 +235,8 @@ end
     function saveConfigPressed(~, ~)
         try
             readEditors();
-            filename = vstim.saveGuiConfig(cfg);
+            protocolConfigs.(vstim.protocolConfigKey(cfg.protocol)) = cfg;
+            filename = vstim.saveGuiConfig(cfg, protocolConfigs);
             statusLabel.Text = "Saved configuration: " + string(filename);
         catch ME
             uialert(fig, ME.message, 'Could not save configuration');
@@ -231,12 +251,21 @@ end
             return
         end
         try
-            loaded = vstim.loadGuiConfig(fullfile(path, file));
+            [loaded, loadedProtocolConfigs] = ...
+                vstim.loadGuiConfig(fullfile(path, file));
             if ~any(string(loaded.protocol) == protocolNames)
                 error('vstim:UnknownProtocol', ...
                     'Configuration uses unknown protocol "%s".', loaded.protocol)
             end
             cfg = loaded;
+            protocolConfigs = loadedProtocolConfigs;
+            for availableProtocol = protocolNames
+                key = vstim.protocolConfigKey(availableProtocol);
+                if ~isfield(protocolConfigs,key)
+                    protocolConfigs.(key) = ...
+                        vstim.defaultConfig(availableProtocol);
+                end
+            end
             if isfield(cfg.sync,'onsetPulseSec')
                 cfg.sync = rmfield(cfg.sync,'onsetPulseSec');
             end

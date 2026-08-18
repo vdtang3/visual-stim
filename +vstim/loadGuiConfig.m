@@ -1,5 +1,7 @@
-function cfg = loadGuiConfig(filename)
-%LOADGUICONFIG Load a complete GUI configuration file.
+function [cfg, protocolConfigs] = loadGuiConfig(filename)
+%LOADGUICONFIG Load GUI configurations, including all saved protocols.
+
+protocolConfigs = struct;
 
 if ~isfile(filename)
     error('vstim:ConfigNotFound', 'Configuration file not found: %s', filename)
@@ -10,6 +12,7 @@ if strcmpi(extension, '.json')
     if isfield(descriptor, 'useBuiltInDefaults') && ...
             descriptor.useBuiltInDefaults
         cfg = vstim.defaultConfig(string(descriptor.activeProtocol));
+        protocolConfigs.(vstim.protocolConfigKey(cfg.protocol)) = cfg;
         return
     end
     error('vstim:InvalidGuiConfig', ...
@@ -132,4 +135,42 @@ end
 cfg = vstim.normalizeDisplayGeometry(cfg);
 cfg = vstim.clampMappingRegion(cfg);
 vstim.validateConfig(cfg);
+
+% Version 1 files contain only cfg. Version 2 files retain one configuration
+% per protocol while cfg remains present for compatibility with older code.
+if isfield(s.guiConfig,'protocolConfigs')
+    savedConfigs = s.guiConfig.protocolConfigs;
+    names = fieldnames(savedConfigs);
+    for i = 1:numel(names)
+        savedCfg = savedConfigs.(names{i});
+        if string(savedCfg.protocol) == cfg.protocol
+            protocolConfigs.(names{i}) = cfg;
+        else
+            protocolConfigs.(names{i}) = migrateSavedConfig(savedCfg, filename);
+        end
+    end
+end
+protocolConfigs.(vstim.protocolConfigKey(cfg.protocol)) = cfg;
+end
+
+function cfg = migrateSavedConfig(savedCfg, sourceFilename)
+% Reuse the public version-1 migration path for each stored protocol.
+
+guiConfig.schemaVersion = "1.0.0";
+guiConfig.platform = string(computer);
+guiConfig.cfg = savedCfg;
+temporaryFile = [tempname '.mat'];
+cleanup = onCleanup(@() deleteIfPresent(temporaryFile));
+save(temporaryFile,'guiConfig');
+cfg = vstim.loadGuiConfig(temporaryFile);
+if isempty(cfg)
+    error('vstim:InvalidGuiConfig', ...
+        'Could not load a protocol configuration from %s.', sourceFilename)
+end
+end
+
+function deleteIfPresent(filename)
+if isfile(filename)
+    delete(filename)
+end
 end
