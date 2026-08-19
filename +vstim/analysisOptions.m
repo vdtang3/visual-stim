@@ -17,7 +17,7 @@ if nargin > 1 && ~isempty(overrides)
     end
 end
 
-options = setDefault(options, 'bootstrapRepetitions', 200);
+options = setDefault(options, 'bootstrapRepetitions', 100);
 options = setDefault(options, 'responseWindowMs', [20 200]);
 options = setDefault(options, 'baselineWindowMs', [-100 0]);
 options = setDefault(options, 'spikeBinMs', 10);

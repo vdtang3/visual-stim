@@ -57,7 +57,7 @@ cfg.session.randomSeed = 1;
 % Shared analysis settings. These are saved for offline analysis and do not
 % affect stimulus presentation.
 cfg.analysis.durationsSec = [30 60 90 120 180 Inf];
-cfg.analysis.bootstrapRepetitions = 1000;
+cfg.analysis.bootstrapRepetitions = 100;
 cfg.analysis.gaussianCenterBoundsDeg = [-100 100; -60 60];
 cfg.analysis.gaussianWidthBoundsDeg = [2 80];
 
@@ -78,7 +78,7 @@ switch cfg.protocol
         a.positionBinDeg = 4.8;
         a.spatialSmoothingDeg = 4.8;
         a.minimumSweeps = 8;
-        a.bootstrapRepetitions = 1000;
+        a.bootstrapRepetitions = 100;
 
     case "Flashed bars"
         p.mappingAzimuthLimitsDeg = [];
@@ -97,7 +97,7 @@ switch cfg.protocol
         a.spatialSmoothingDeg = 4.8;
         a.sharePolarityCenter = true;
         a.sharePolarityWidth = true;
-        a.bootstrapRepetitions = 1000;
+        a.bootstrapRepetitions = 100;
 
     case "Sparse noise"
         p.mappingAzimuthLimitsDeg = [];
@@ -126,7 +126,7 @@ switch cfg.protocol
         a.regularizationStrength = 1;
         a.crossValidationFolds = 5;
         a.method = "both";
-        a.bootstrapRepetitions = 1000;
+        a.bootstrapRepetitions = 100;
 
     case "Fast Gabor tiling"
         p.mappingAzimuthLimitsDeg = [];
@@ -151,7 +151,7 @@ switch cfg.protocol
         a.baselineWindowMs = [-100 0];
         a.spatialSmoothingDeg = 4.8;
         a.orientationRadiusDeg = 15;
-        a.bootstrapRepetitions = 1000;
+        a.bootstrapRepetitions = 100;
 
     case "Targeted Gabor grid"
         p.centerAzimuthDeg = [];
@@ -175,7 +175,7 @@ switch cfg.protocol
         a.baselineWindowMs = [-100 0];
         a.spatialSmoothingDeg = 4.8;
         a.orientationRadiusDeg = 15;
-        a.bootstrapRepetitions = 1000;
+        a.bootstrapRepetitions = 100;
 
     case "Gabor + inverse stimuli"
         p.centerAzimuthDeg = [];
@@ -198,7 +198,7 @@ switch cfg.protocol
         a.responseWindowMs = [20 300];
         a.baselineWindowMs = [-100 0];
         a.orientationRadiusDeg = 15;
-        a.bootstrapRepetitions = 1000;
+        a.bootstrapRepetitions = 100;
 
     otherwise
         error('vstim:UnknownProtocol', 'Unknown protocol "%s".', cfg.protocol)
