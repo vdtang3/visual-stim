@@ -7,12 +7,15 @@ cellSession = newSession();
 selectedRow = [];
 consensusResult = [];
 visibleRunIndices = [];
+selectedDisplayMode = "Response / RF";
+selectedTrialIndex = 1;
+selectedConditionFilter = "All";
 
 fig = uifigure('Name','In vivo patch RF quick analysis', ...
-    'Position',[70 70 1320 790],'Color',[0.96 0.96 0.96]);
+    'Position',[70 70 1600 900],'Color',[0.96 0.96 0.96]);
 main = uigridlayout(fig,[4 2]);
 main.RowHeight = {48,255,'1x',48};
-main.ColumnWidth = {565,'1x'};
+main.ColumnWidth = {380,'1x'};
 main.Padding = [12 12 12 12];
 main.RowSpacing = 9;
 main.ColumnSpacing = 12;
@@ -82,14 +85,14 @@ parameterTimingLabel = uilabel(parametersGrid,'Text', ...
     'WordWrap','on','FontAngle','italic');
 analysisTable = uitable(parametersGrid,'Data',cell(0,2), ...
     'ColumnName',{'Parameter','Value'},'ColumnEditable',[false true], ...
-    'ColumnWidth',{235,245},'RowName',{}, ...
+    'ColumnWidth',{160,'auto'},'RowName',{}, ...
     'CellEditCallback',@analysisParametersEdited);
 
 metricsGrid = uigridlayout(metricsTab,[1 1]);
 metricsGrid.Padding = [10 10 10 10];
 metricsTable = uitable(metricsGrid,'Data',cell(0,2), ...
     'ColumnName',{'Metric','Value'},'ColumnEditable',[false false], ...
-    'ColumnWidth',{245,235},'RowName',{});
+    'ColumnWidth',{170,'auto'},'RowName',{});
 
 resultsGrid = uigridlayout(resultsTab,[1 1]);
 resultsGrid.Padding = [10 10 10 10];
@@ -104,10 +107,26 @@ uitextarea(helpGrid,'Editable','off','FontName','Menlo', ...
 plots = uigridlayout(main,[1 2]);
 plots.Layout.Row = 3;
 plots.Layout.Column = 2;
-runAxes = uiaxes(plots);
+
+runDisplayPanel = uipanel(plots,'BorderType','none');
+runDisplayGrid = uigridlayout(runDisplayPanel,[2 1]);
+runDisplayGrid.RowHeight = {32,'1x'};
+runDisplayGrid.Padding = [0 0 0 0];
+runDisplayGrid.RowSpacing = 4;
+modeBar = uigridlayout(runDisplayGrid,[1 3]);
+modeBar.ColumnWidth = {130,130,'1x'};
+modeBar.Padding = [0 0 0 0];
+responseModeButton = uibutton(modeBar,'Text','Response / RF', ...
+    'ButtonPushedFcn',@(~,~) setDisplayMode("Response / RF"));
+vmModeButton = uibutton(modeBar,'Text','Vm / Trials', ...
+    'ButtonPushedFcn',@(~,~) setDisplayMode("Vm / Trials"));
+uilabel(modeBar,'Text','');
+runDisplayContent = uipanel(runDisplayGrid,'BorderType','none');
+
 consensusAxes = uiaxes(plots);
-title(runAxes,'Selected run');
 title(consensusAxes,'Cell consensus');
+updateModeButtonStyles();
+placeholderLabel(runDisplayContent,'Selected run');
 
 footer = uigridlayout(main,[1 2]);
 footer.Layout.Row = 4;
@@ -176,6 +195,8 @@ consensusLabel = uilabel(footer,'Text','No consensus generated', ...
             return
         end
         selectedRow = visibleRunIndices(displayedRow);
+        selectedTrialIndex = 1;
+        selectedConditionFilter = "All";
         updateButtons();
         showSelectedRun();
     end
@@ -233,10 +254,35 @@ consensusLabel = uilabel(footer,'Text','No consensus generated', ...
             result.waveSurferFile = entry.waveSurferFile;
             result.preprocessing = ...
                 'vstim.preprocessForAnalysis (RF-only)';
+            statusLabel.Text = 'Building inspection views…';
+            drawnow;
+            % Reusing the same already-loaded/preprocessed data and the
+            % same alignment convention analysisDataMetrics already
+            % recomputes independently below - no second H5 load, and
+            % this data goes out of scope once this callback returns (it
+            % is never cached on the run entry; both display modes render
+            % entirely from the lightweight products stored here).
+            alignment = vstim.alignRecordedStimuli(runData,data);
+            fullOptions = vstim.analysisOptions(runData,entry.analysisOverrides);
+            inspection = struct();
+            inspection.trialView = vstim.buildTrialInspection(runData,data,alignment);
+            switch entry.protocol
+                case "Moving bars"
+                    inspection.responseView = vstim.analyzeMovingBarInspection( ...
+                        runData,data,alignment,fullOptions,result);
+                case "Fast Gabor tiling"
+                    inspection.responseView = vstim.analyzeGaborMapInspection( ...
+                        runData,data,alignment,fullOptions);
+                otherwise
+                    inspection.responseView = [];
+            end
             cellSession.runs(selectedRow).analysisResult = result;
+            cellSession.runs(selectedRow).inspectionResult = inspection;
             cellSession.runs(selectedRow).dataMetrics = ...
                 vstim.analysisDataMetrics(runData,data,result);
             cellSession.runs(selectedRow).status = "Analyzed";
+            selectedTrialIndex = 1;
+            selectedConditionFilter = "All";
             consensusResult = [];
             refreshTable();
             showSelectedRun();
@@ -391,9 +437,9 @@ consensusLabel = uilabel(footer,'Text','No consensus generated', ...
     end
 
     function showSelectedRun()
-        resetPlotAxes(runAxes);
+        clearContainer(runDisplayContent);
         if isempty(selectedRow) || selectedRow>numel(cellSession.runs)
-            title(runAxes,'Selected run');
+            placeholderLabel(runDisplayContent,'Selected run');
             analysisTable.Data = cell(0,2);
             metricsTable.Data = cell(0,2);
             parameterTimingLabel.Text = ...
@@ -417,12 +463,295 @@ consensusLabel = uilabel(footer,'Text','No consensus generated', ...
                 "Pairing: "+entry.h5Pairing
                 "Parameters: "+entry.parameterSummary
                 "Status: "+entry.status]);
-            title(runAxes,'Run not analyzed');
+            placeholderLabel(runDisplayContent,'Run not analyzed');
             return
         end
         r = entry.analysisResult;
         summaryArea.Value = cellstr(resultSummary(r,selectedRow));
-        plotRunResult(runAxes,r);
+        if selectedDisplayMode == "Vm / Trials"
+            renderTrialInspectionView(runDisplayContent,entry);
+        else
+            renderResponseRfView(runDisplayContent,entry);
+        end
+    end
+
+    function setDisplayMode(mode)
+        selectedDisplayMode = mode;
+        updateModeButtonStyles();
+        showSelectedRun();
+    end
+
+    function updateModeButtonStyles()
+        highlightColor = [0.25 0.55 0.85];
+        normalColor = [0.94 0.94 0.94];
+        if selectedDisplayMode == "Vm / Trials"
+            vmModeButton.BackgroundColor = highlightColor;
+            vmModeButton.FontColor = [1 1 1];
+            responseModeButton.BackgroundColor = normalColor;
+            responseModeButton.FontColor = [0 0 0];
+        else
+            responseModeButton.BackgroundColor = highlightColor;
+            responseModeButton.FontColor = [1 1 1];
+            vmModeButton.BackgroundColor = normalColor;
+            vmModeButton.FontColor = [0 0 0];
+        end
+    end
+
+    function renderResponseRfView(container,entry)
+        r = entry.analysisResult;
+        hasResponseView = ~isempty(entry.inspectionResult) && ...
+            ~isempty(entry.inspectionResult.responseView);
+        switch entry.protocol
+            case "Moving bars"
+                if ~hasResponseView
+                    placeholderLabel(container, ...
+                        'Re-analyze this run to enable this view.');
+                    return
+                end
+                renderMovingBarResponseView(container, ...
+                    entry.inspectionResult.responseView,r);
+            case "Fast Gabor tiling"
+                if ~hasResponseView
+                    placeholderLabel(container, ...
+                        'Re-analyze this run to enable this view.');
+                    return
+                end
+                renderGaborMapResponseView(container, ...
+                    entry.inspectionResult.responseView,r);
+            otherwise
+                ax = singleAxesContainer(container);
+                plotRunResult(ax,r);
+        end
+    end
+
+    function renderMovingBarResponseView(container,inspection,r)
+        directions = inspection.directions;
+        nDirections = max(1,numel(directions));
+        gridAxes = axesGrid(container,2,nDirections);
+        [styleColor,styleLineStyle,styleNote] = vstim.rfOverlayStyle(r);
+        polarityColors = containers.Map({-1,1},{[0.1 0.1 0.8],[0.8 0.1 0.1]});
+        for d = 1:numel(directions)
+            block = directions{d};
+            rasterAxes = gridAxes(1,d);
+            psthAxes = gridAxes(2,d);
+
+            % Individual per-spike tick marks are not handle-hidden: on
+            % uiaxes, HandleVisibility='off' excludes an object from
+            % automatic axis-limit computation (not only from legends), so
+            % hiding every raster tick left the axes at their unscaled
+            % default [0,1] range with almost every real tick clipped out
+            % of view. Neither axes here uses a legend, so there is no
+            % downside to leaving every plotted object handle-visible.
+            hold(rasterAxes,'on');
+            rowCursor = 0;
+            for p = 1:numel(block.polarities)
+                pol = block.polarities{p};
+                color = polarityColors(pol.polarity);
+                for t = 1:numel(pol.spikePositionsDegByTrial)
+                    rowCursor = rowCursor+1;
+                    positions = pol.spikePositionsDegByTrial{t};
+                    plot(rasterAxes,positions,rowCursor*ones(size(positions)), ...
+                        '|','Color',color,'MarkerSize',6,'LineWidth',1);
+                end
+            end
+            hold(rasterAxes,'off');
+            ylabel(rasterAxes,'Trial');
+            ylim(rasterAxes,[0,rowCursor+1]);
+            title(rasterAxes,strrep(block.direction,'_',' '),'Interpreter','none');
+
+            hold(psthAxes,'on');
+            for p = 1:numel(block.polarities)
+                pol = block.polarities{p};
+                color = polarityColors(pol.polarity);
+                valid = isfinite(pol.meanSpikesPerTrial);
+                fill(psthAxes, ...
+                    [pol.binCentersDeg(valid),fliplr(pol.binCentersDeg(valid))], ...
+                    [pol.upperBandSpikesPerTrial(valid), ...
+                     fliplr(pol.lowerBandSpikesPerTrial(valid))], ...
+                    color,'FaceAlpha',0.2,'EdgeColor','none');
+                plot(psthAxes,pol.binCentersDeg(valid),pol.meanSpikesPerTrial(valid), ...
+                    '-','Color',color,'LineWidth',1.5);
+            end
+            if block.axis == "azimuth"
+                profile = inspection.rfProfiles.azimuth;
+                centerDeg = r.rfCenterAzimuthDeg;
+            else
+                profile = inspection.rfProfiles.elevation;
+                centerDeg = r.rfCenterElevationDeg;
+            end
+            plot(psthAxes,profile.positionDeg,profile.gaussianPredictionHz, ...
+                '--','Color',[0.3 0.3 0.3],'LineWidth',1);
+            if isfinite(centerDeg)
+                xline(psthAxes,centerDeg,styleLineStyle,'Color',styleColor, ...
+                    'LineWidth',1.5,'Label',"RF ("+styleNote+")", ...
+                    'LabelOrientation','horizontal','HandleVisibility','off');
+            end
+            hold(psthAxes,'off');
+            xlabel(psthAxes,sprintf('%s position (deg)',block.axis));
+            ylabel(psthAxes,'Spikes/trial');
+            % Set an explicit x-range from the known bin-center span (shared
+            % across polarities within one direction) rather than relying on
+            % uiaxes' automatic scaling to resolve before linkaxes reads it:
+            % linkaxes can lock in whichever XLim each axes currently
+            % reports, and uiaxes' own auto-scale recompute is asynchronous,
+            % so without this the shared range was sometimes still the
+            % unscaled default when linked, clipping nearly all real data
+            % out of view.
+            xRangeDeg = [min(block.polarities{1}.binCentersDeg), ...
+                max(block.polarities{1}.binCentersDeg)];
+            xlim(rasterAxes,xRangeDeg);
+            xlim(psthAxes,xRangeDeg);
+            linkaxes([rasterAxes,psthAxes],'x');
+        end
+    end
+
+    function renderGaborMapResponseView(container,inspection,r)
+        % No continuous locator plot here - the cell consensus panel is
+        % where the model's conclusion is shown as a real, continuous
+        % azimuth/elevation position. This view stays purely about the raw
+        % per-position response structure, but still marks the single grid
+        % tile nearest the fitted center as a lightweight cross-reference
+        % back to that conclusion.
+        nAz = numel(inspection.azimuthAxisDeg);
+        nEl = numel(inspection.elevationAxisDeg);
+        gridAxes = axesGrid(container,nEl,nAz);
+        [styleColor,styleLineStyle] = vstim.rfOverlayStyle(r);
+        [nearestRow,nearestCol] = nearestGaborTile(r,inspection.azimuthAxisDeg, ...
+            inspection.elevationAxisDeg,nEl);
+
+        positionByCell = cell(nEl,nAz);
+        sharedUpperLimit = 0;
+        for i = 1:numel(inspection.positions)
+            p = inspection.positions{i};
+            col = find(inspection.azimuthAxisDeg==p.azimuthDeg);
+            row = nEl-find(inspection.elevationAxisDeg==p.elevationDeg)+1;
+            positionByCell{row,col} = p;
+            sharedUpperLimit = max(sharedUpperLimit,max(p.upperBandHz,[],'omitnan'));
+        end
+        if ~isfinite(sharedUpperLimit) || sharedUpperLimit==0
+            sharedUpperLimit = 1;
+        end
+
+        for row = 1:nEl
+            for col = 1:nAz
+                ax = gridAxes(row,col);
+                p = positionByCell{row,col};
+                if isempty(p)
+                    axis(ax,'off');
+                    continue
+                end
+                hold(ax,'on');
+                fill(ax,[p.binCentersMs,fliplr(p.binCentersMs)], ...
+                    [p.upperBandHz,fliplr(p.lowerBandHz)],[0.2 0.2 0.2], ...
+                    'FaceAlpha',0.2,'EdgeColor','none');
+                plot(ax,p.binCentersMs,p.meanRateHz,'-','Color',[0.2 0.2 0.2], ...
+                    'LineWidth',1.2);
+                xline(ax,0,'-','Color',[0 0 0]);
+                xline(ax,inspection.responseWindowMs,':','Color',[0.3 0.3 0.3]);
+                xline(ax,inspection.baselineWindowMs,':','Color',[0.6 0.6 0.6]);
+                hold(ax,'off');
+                xlim(ax,inspection.displayWindowMs);
+                ylim(ax,[0,sharedUpperLimit]);
+                title(ax,sprintf('%g, %g',p.azimuthDeg,p.elevationDeg),'FontSize',8);
+                if row==nearestRow && col==nearestCol
+                    rectangle(ax,'Position',[inspection.displayWindowMs(1),0, ...
+                        diff(inspection.displayWindowMs),sharedUpperLimit], ...
+                        'EdgeColor',styleColor,'LineWidth',2,'LineStyle',styleLineStyle);
+                end
+            end
+        end
+    end
+
+    function renderTrialInspectionView(container,entry)
+        inspection = entry.inspectionResult.trialView;
+        layout = uigridlayout(container,[3 1]);
+        layout.RowHeight = {'1x',40,'2x'};
+        layout.Padding = [4 4 4 4];
+        layout.RowSpacing = 6;
+
+        overviewAxes = uiaxes(layout);
+        ov = inspection.overview;
+        plot(overviewAxes,ov.timeSec,ov.voltMv,'Color',[0.2 0.2 0.2],'DisplayName','V_m');
+        hold(overviewAxes,'on');
+        isBurst = ov.spikeIsBurst;
+        plot(overviewAxes,ov.spikeTimesSec(~isBurst),ov.spikeVoltageMv(~isBurst), ...
+            '.','Color',[0.1 0.1 0.8],'MarkerSize',6,'DisplayName','Isolated spike');
+        plot(overviewAxes,ov.spikeTimesSec(isBurst),ov.spikeVoltageMv(isBurst), ...
+            '.','Color',[0.8 0.1 0.1],'MarkerSize',6,'DisplayName','Burst spike');
+        for i = 1:numel(ov.trialOnsetTimesSec)
+            xline(overviewAxes,ov.trialOnsetTimesSec(i),'Color',[0.85 0.85 0.85], ...
+                'HandleVisibility','off');
+        end
+        hold(overviewAxes,'off');
+        xlabel(overviewAxes,'Time (s)');
+        ylabel(overviewAxes,'Corrected V_m (mV)');
+        title(overviewAxes,sprintf('%s — whole recording (%.0f s)', ...
+            entry.protocol,ov.recordingDurationSec),'Interpreter','none');
+        xlim(overviewAxes,[0,max(1,ov.recordingDurationSec)]);
+        legend(overviewAxes,'Location','best');
+
+        trials = inspection.trials;
+        eligibleRows = eligibleTrialRows(trials,selectedConditionFilter);
+        if isempty(eligibleRows) || ~ismember(selectedTrialIndex,eligibleRows)
+            if isempty(eligibleRows)
+                selectedTrialIndex = 1;
+            else
+                selectedTrialIndex = eligibleRows(1);
+            end
+        end
+
+        controlBar = uigridlayout(layout,[1 5]);
+        controlBar.ColumnWidth = {60,60,70,'1x',80};
+        controlBar.Padding = [0 0 0 0];
+        controlBar.ColumnSpacing = 6;
+        uibutton(controlBar,'Text','◀ Prev','ButtonPushedFcn',@(~,~) stepTrial(-1));
+        uibutton(controlBar,'Text','Next ▶','ButtonPushedFcn',@(~,~) stepTrial(1));
+        uispinner(controlBar,'Limits',[1,height(trials)],'RoundFractionalValues','on', ...
+            'Value',selectedTrialIndex,'ValueChangedFcn',@trialSpinnerChanged);
+        conditionItems = unique(["All";trials.conditionLabel],'stable');
+        uidropdown(controlBar,'Items',cellstr(conditionItems), ...
+            'Value',char(selectedConditionFilter),'ValueChangedFcn',@conditionFilterChanged);
+        % Short verdict word only (PASS/WARN/INCOMPLETE); the full sentence
+        % does not fit this row, so it is a tooltip instead.
+        uilabel(controlBar,'Text',inspection.stimulusTiming.verdict, ...
+            'FontColor',verdictColor(inspection.stimulusTiming.verdict), ...
+            'FontWeight','bold','HorizontalAlignment','right', ...
+            'Tooltip',inspection.stimulusTiming.summary);
+
+        trialAxes = uiaxes(layout);
+        drawTrialWindow(trialAxes,inspection,selectedTrialIndex);
+    end
+
+    function stepTrial(delta)
+        if isempty(selectedRow)
+            return
+        end
+        entry = cellSession.runs(selectedRow);
+        if isempty(entry.inspectionResult)
+            return
+        end
+        trials = entry.inspectionResult.trialView.trials;
+        eligibleRows = eligibleTrialRows(trials,selectedConditionFilter);
+        if isempty(eligibleRows)
+            return
+        end
+        currentPosition = find(eligibleRows==selectedTrialIndex,1);
+        if isempty(currentPosition)
+            currentPosition = 1;
+        end
+        newPosition = min(max(1,currentPosition+delta),numel(eligibleRows));
+        selectedTrialIndex = eligibleRows(newPosition);
+        showSelectedRun();
+    end
+
+    function conditionFilterChanged(dropdown,~)
+        selectedConditionFilter = string(dropdown.Value);
+        showSelectedRun();
+    end
+
+    function trialSpinnerChanged(spinner,~)
+        selectedTrialIndex = round(spinner.Value);
+        showSelectedRun();
     end
 
     function analysisParametersEdited(~,~)
@@ -436,6 +765,7 @@ consensusLabel = uilabel(footer,'Text','No consensus generated', ...
                 cellSession.runs(selectedRow).protocol,edited);
             cellSession.runs(selectedRow).analysisOverrides = edited;
             cellSession.runs(selectedRow).analysisResult = [];
+            cellSession.runs(selectedRow).inspectionResult = [];
             cellSession.runs(selectedRow).dataMetrics = struct();
             cellSession.runs(selectedRow).status = "Ready";
             consensusResult = [];
@@ -517,6 +847,7 @@ run.analysisResult = [];
 run.analysisOverrides = struct();
 run.stimulusTiming = struct();
 run.dataMetrics = struct();
+run.inspectionResult = [];
 end
 
 function tableData = emptyRunTable()
@@ -827,6 +1158,103 @@ function resetPlotAxes(ax)
 % old RF outlines cannot accumulate between run/protocol redraws.
 colorbar(ax,'off');
 cla(ax,'reset');
+end
+
+function clearContainer(container)
+% Delete every child of a display container before rebuilding it: unlike
+% resetPlotAxes (one fixed uiaxes, cleared in place), the selected-run
+% display container's content varies in shape between protocols/modes -
+% a single uiaxes, a grid of uiaxes, or the Vm/Trials controls+axes - so
+% it is rebuilt from scratch on every showSelectedRun() call instead.
+delete(container.Children);
+end
+
+function placeholderLabel(container,text)
+layout = uigridlayout(container,[1 1]);
+layout.Padding = [0 0 0 0];
+uilabel(layout,'Text',text,'HorizontalAlignment','center','FontAngle','italic');
+end
+
+function ax = singleAxesContainer(container)
+% One uiaxes, grid-managed so it fills its container the same way the
+% original fixed runAxes filled its own uigridlayout cell.
+layout = uigridlayout(container,[1 1]);
+layout.Padding = [0 0 0 0];
+ax = uiaxes(layout);
+end
+
+function axesHandles = axesGrid(container,rows,cols)
+% A rows x cols grid of small-multiple uiaxes: the only way to get small
+% multiples inside a uifigure (no tiledlayout/subplot/bare-figure
+% alternative is used anywhere in this app).
+layout = uigridlayout(container,[rows,cols]);
+layout.Padding = [4 4 4 4];
+layout.RowSpacing = 4;
+layout.ColumnSpacing = 4;
+axesHandles = gobjects(rows,cols);
+for r = 1:rows
+    for c = 1:cols
+        axesHandles(r,c) = uiaxes(layout);
+    end
+end
+end
+
+function [row,col] = nearestGaborTile(result,azimuthAxisDeg,elevationAxisDeg,nEl)
+% The (row,col) of the spatial PSTH grid closest to result's fitted
+% center, using the same elevation-flip convention as the grid itself
+% (highest tested elevation at row 1). Returns (0,0) - never a real tile -
+% when no finite center is available, so the caller's equality check
+% simply never highlights a tile.
+row = 0; col = 0;
+if ~isfinite(result.rfCenterAzimuthDeg) || ~isfinite(result.rfCenterElevationDeg)
+    return
+end
+[~,col] = min(abs(azimuthAxisDeg-result.rfCenterAzimuthDeg));
+[~,elevationIndex] = min(abs(elevationAxisDeg-result.rfCenterElevationDeg));
+row = nEl-elevationIndex+1;
+end
+
+function rows = eligibleTrialRows(trials,filterLabel)
+if filterLabel == "All"
+    rows = (1:height(trials))';
+else
+    rows = find(trials.conditionLabel==filterLabel);
+end
+end
+
+function drawTrialWindow(ax,inspection,trialIndex)
+row = inspection.trials(trialIndex,:);
+timeMs = inspection.trialWindowTimeMs;
+isBurst = row.spikeIsBurst{1};
+% Not handle-hidden: on uiaxes that also excludes it from automatic
+% Y-limit computation, which could clip the trace to whatever narrow
+% range the spike markers alone happen to span. Giving it a DisplayName
+% keeps it out of an ugly auto-generated legend entry instead.
+plot(ax,timeMs,row.vmMv,'Color',[0.2 0.2 0.2],'DisplayName','V_m');
+hold(ax,'on');
+plot(ax,row.spikeTimesMs{1}(~isBurst),row.spikeVoltageMv{1}(~isBurst),'.', ...
+    'Color',[0.1 0.1 0.8],'MarkerSize',10,'DisplayName','Isolated spike');
+plot(ax,row.spikeTimesMs{1}(isBurst),row.spikeVoltageMv{1}(isBurst),'.', ...
+    'Color',[0.8 0.1 0.1],'MarkerSize',10,'DisplayName','Burst spike');
+xline(ax,0,'-','Color',[0 0 0],'HandleVisibility','off');
+hold(ax,'off');
+xlabel(ax,'Time since trial onset (ms)');
+ylabel(ax,'Corrected V_m (mV)');
+title(ax,sprintf('Trial %d/%d — %s',trialIndex,height(inspection.trials), ...
+    row.conditionLabel),'Interpreter','none');
+xlim(ax,[timeMs(1),timeMs(end)]);
+legend(ax,'Location','best');
+end
+
+function color = verdictColor(verdict)
+switch verdict
+    case "PASS"
+        color = [0.2 0.5 0.2];
+    case "WARN"
+        color = [0.75 0.35 0];
+    otherwise
+        color = [0.6 0.6 0.6];
+end
 end
 
 function plotEllipse(ax,azimuth,elevation,ellipse,color,lineStyle)

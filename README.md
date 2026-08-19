@@ -234,6 +234,31 @@ thresholds are editable per run. Previously saved analysis results that
 predate these gates are invalidated when the cell session is loaded and must
 be reanalyzed.
 
+The selected-run display has two views, toggled at the top of the plot pane:
+
+- **Response / RF** shows the raw response structure behind the fitted
+  estimate. For moving bars: a spike-position raster and smoothed
+  position PSTH per sweep direction, with the fitted center/ellipse marked
+  in one of three styles - solid green (clean interior fit), dashed amber
+  (usable but pinned to the edge of the tested range - a case the quality
+  gates alone do not flag), or solid olive (not usable) - so a
+  low-confidence estimate is never shown as equally trustworthy as a clean
+  one. For fast Gabor tiling: a spatial grid of onset-aligned PSTHs, one
+  per tested position (orientation pooled), with the same three-tier style
+  outlining only the single tile nearest the fitted center - the
+  continuous fitted center/ellipse itself is left to the cell consensus
+  panel, so this view isn't crowded by a second copy of it. Other
+  protocols keep the original scatter/profile plot.
+- **Vm / Trials** is a generic acquisition-QC view for any protocol: a
+  decimated whole-recording overview (spikes, drift, artifacts at a
+  glance) and a compact single-trial viewer with Prev/Next, a trial
+  number, and a condition filter - not a stack of every trial - for
+  deciding whether a cell is worth continuing before the RF fit finishes.
+
+Both views are computed once, alongside the RF fit, when a run is analyzed,
+and render from that cached result afterward - switching views or reloading
+a saved session never re-reads the WaveSurfer H5.
+
 After at least two usable runs have been analyzed, **Generate consensus RF**
 first combines repeat recordings within their mapping-protocol family and then
 combines the protocol-family estimates. Both stages use bootstrap center
@@ -267,6 +292,10 @@ preprocessing, TTL alignment, and RF recovery end to end.
 - `+vstim/runProtocol.m` — shared Psychtoolbox presentation loop
 - `+vstim/drawStimulus.m` — protocol-specific drawing
 - `+vstim/TTLController.m` — safe Arduino control
+- `+vstim/buildTrialInspection.m` — generic Vm/trial QC data for any protocol
+- `+vstim/analyzeMovingBarInspection.m`, `+vstim/analyzeGaborMapInspection.m`
+  — raster/PSTH and spatial-PSTH evidence behind the moving-bar/Gabor RF fit
+- `+vstim/rfOverlayStyle.m` — shared three-tier usable/edge/unusable styling
 - `+vstim/loadRun.m` — saved-run loader
 - `+vstim/emptyAnalysisResult.m` — common offline-result schema
 - `vendor/in_vivo_patch/` — unchanged copied WaveSurfer loading and standard
