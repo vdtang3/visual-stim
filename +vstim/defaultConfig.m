@@ -86,7 +86,7 @@ switch cfg.protocol
         p.barWidthDeg = 9.6;
         p.positionSpacingDeg = 9.6;
         p.durationSec = 0.100;
-        p.interStimulusSec = 0.300;
+        p.interStimulusSec = [0.45 0.55];
         p.polarities = [-1 1];
         p.verticalPositionsDeg = [];
         p.horizontalPositionsDeg = [];
@@ -144,7 +144,7 @@ switch cfg.protocol
         p.temporalModulation = "drifting";
         p.temporalFrequencyHz = 2;
         p.durationSec = 0.500;
-        p.interStimulusSec = 1;
+        p.interStimulusSec = [0.45 0.55];
         p.repetitionsPerCondition = 20;
 
         a.responseWindowMs = [20 300];
@@ -158,7 +158,7 @@ switch cfg.protocol
         p.centerElevationDeg = [];
         p.gridRadius = 0;
         p.gridSpacingDeg = [15 15];
-        p.orientationsDeg = [0 45 90 135];
+        p.orientationsDeg = [0 60 120 180 240 300];
         p.orientationDefinition = "bar_orientation";
         p.spatialFrequencyCyclesPerDeg = 0.04;
         p.diameterDeg = 20;
@@ -168,8 +168,8 @@ switch cfg.protocol
         p.temporalModulation = "drifting";
         p.temporalFrequencyHz = 2;
         p.durationSec = 0.500;
-        p.interStimulusSec = 1;
-        p.repetitionsPerCondition = 20;
+        p.interStimulusSec = [0.45 0.55];
+        p.repetitionsPerCondition = 30;
 
         a.responseWindowMs = [20 300];
         a.baselineWindowMs = [-100 0];
@@ -192,7 +192,7 @@ switch cfg.protocol
         p.temporalModulation = "drifting";
         p.temporalFrequencyHz = 2;
         p.durationSec = 0.500;
-        p.interStimulusSec = 1;
+        p.interStimulusSec = [0.45 0.55];
         p.repetitionsPerCondition = 20;
 
         a.responseWindowMs = [20 300];

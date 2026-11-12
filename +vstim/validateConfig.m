@@ -129,4 +129,20 @@ switch string(cfg.protocol)
             ["drifting", "counterphasing"]);
         mustBePositive(p.temporalFrequencyHz);
 end
+if isfield(p, 'interStimulusSec')
+    validateInterStimulusRange(p.interStimulusSec);
+end
+end
+
+function validateInterStimulusRange(rangeSec)
+% A scalar is still accepted so configurations saved before ranges
+% existed continue to run as fixed intervals.
+if ~isnumeric(rangeSec) || ~any(numel(rangeSec) == [1 2]) || ...
+        any(~isfinite(rangeSec)) || any(rangeSec < 0) || ...
+        (numel(rangeSec) == 2 && rangeSec(2) < rangeSec(1))
+    error('vstim:InvalidInterStimulusRange', ...
+        ['interStimulusSec must be [minimum maximum] in seconds, with ' ...
+         '0 <= minimum <= maximum. Use equal values (e.g. [1 1]) for ' ...
+         'a fixed interval.'])
+end
 end

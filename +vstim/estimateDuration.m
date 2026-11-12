@@ -2,6 +2,7 @@ function estimate = estimateDuration(cfg, frameRate)
 %ESTIMATEDURATION Quickly estimate run length without generating a sequence.
 % This is suitable for live GUI updates, including sparse-noise protocols
 % whose full constrained sequence is more expensive to construct.
+% Jittered inter-stimulus intervals contribute their expected (mean) value.
 
 arguments
     cfg (1,1) struct
@@ -57,7 +58,8 @@ switch string(cfg.protocol)
         estimate.trialCount = (numel(vertical)+numel(horizontal)) * ...
             numel(p.polarities) * p.repetitionsPerCondition;
         estimate.durationSec = estimate.trialCount * ...
-            (round(p.durationSec*frameRate)/frameRate + p.interStimulusSec);
+            (round(p.durationSec*frameRate)/frameRate + ...
+            mean(p.interStimulusSec));
 
     case "Sparse noise"
         patternPeriod = p.patternDurationSec + p.interPatternSec;
@@ -85,20 +87,23 @@ switch string(cfg.protocol)
         estimate.trialCount = nPositions * numel(p.orientationsDeg) * ...
             p.repetitionsPerCondition;
         estimate.durationSec = estimate.trialCount * ...
-            (round(p.durationSec*frameRate)/frameRate + p.interStimulusSec);
+            (round(p.durationSec*frameRate)/frameRate + ...
+            mean(p.interStimulusSec));
 
     case "Targeted Gabor grid"
         nPositions = (2*p.gridRadius+1)^2;
         estimate.trialCount = nPositions * numel(p.orientationsDeg) * ...
             p.repetitionsPerCondition;
         estimate.durationSec = estimate.trialCount * ...
-            (round(p.durationSec*frameRate)/frameRate + p.interStimulusSec);
+            (round(p.durationSec*frameRate)/frameRate + ...
+            mean(p.interStimulusSec));
 
     case "Gabor + inverse stimuli"
         estimate.trialCount = numel(p.stimulusTypes) * ...
             numel(p.orientationsDeg) * p.repetitionsPerCondition;
         estimate.durationSec = estimate.trialCount * ...
-            (round(p.durationSec*frameRate)/frameRate + p.interStimulusSec);
+            (round(p.durationSec*frameRate)/frameRate + ...
+            mean(p.interStimulusSec));
 end
 
 estimate.stimulusDurationSec = estimate.durationSec;

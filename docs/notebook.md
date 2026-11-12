@@ -1,5 +1,25 @@
 # Engineering notebook
 
+## 2026-11-12 — Inter-stimulus interval accepts a jitter range
+
+`interStimulusSec` for flashed bars and the three Gabor protocols is now a
+`[minimum maximum]` range; unequal values draw each trial's interval from a
+uniform distribution. Draws come from the stream `generateSequence` already
+seeds, and happen after trial order is chosen, so a seed reproduces both the
+order and the intervals; equal endpoints make no draw at all, so
+fixed-interval sequences are bit-identical to earlier ones. Samples are not
+rounded to whole frames, matching how fixed intervals were already handled:
+presentation waits the requested time and the next onset lands on the
+following vsync, which QC tolerates (2 frames) and the per-trial actual
+interval records. A scalar is still accepted as a fixed interval so older
+saved configurations load unchanged. Sparse noise (`interPatternSec`) and
+moving bars (`interSweepSec`) were left fixed.
+
+The default for all four protocols is `[0.45 0.55]` s. Targeted Gabor grid
+defaults also changed to six orientations (`[0 60 120 180 240 300]`, so
+drifting gratings cover opposite directions of motion) and 30 repetitions
+per condition.
+
 ## 2026-08-19 — Fast Gabor tiling's Response/RF view drops the continuous locator plot
 
 The spatial PSTH grid originally shipped alongside a companion "Fitted RF

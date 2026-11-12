@@ -35,7 +35,8 @@ trials = repmat(base, p.repetitionsPerCondition, 1);
 trials = trials(randperm(height(trials)), :);
 trials.trialIndex = (1:height(trials))';
 trials.durationSec = repmat(round(p.durationSec*frameRate)/frameRate, height(trials), 1);
-trials.interStimulusSec = repmat(p.interStimulusSec, height(trials), 1);
+trials.interStimulusSec = vstim.sampleInterStimulusSec( ...
+    p.interStimulusSec, height(trials));
 
 sequence.trials = trials;
 sequence.verticalPositionsDeg = vertical(:);

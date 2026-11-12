@@ -137,6 +137,13 @@ the inverse gray region independently. For the inverse stimulus,
 that boundary and fades outward. Thus a 20-degree inverse diameter always
 contains a solid 20-degree gray circle.
 
+Flashed-bar and Gabor protocols take `interStimulusSec` as a
+`[minimum maximum]` range in seconds (default `[0.45 0.55]`). Equal values,
+e.g. `[1 1]`, give a fixed gray interval. Unequal values draw each trial's
+interval uniformly from that range, reproducibly from `randomSeed`; the
+drawn values are saved per trial in `sequence.trials.interStimulusSec`, and
+the duration estimate uses the range's mean.
+
 On macOS 26, the package records timestamp-derived long-frame diagnostics and
 emits a platform warning. Current Psychtoolbox releases identify macOS 26
 display timing as unreliable; use a supported Windows or Linux stimulus

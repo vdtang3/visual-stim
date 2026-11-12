@@ -14,9 +14,15 @@ for protocol = protocols
     estimate = vstim.estimateDuration(cfg,60);
     assert(height(sequence.trials) > 0)
     assert(sequence.estimatedDurationSec > 0)
-    assert(abs(estimate.durationSec - ...
-        (sequence.estimatedDurationSec + ...
-        cfg.display.preRunBlankSec + cfg.display.postRunBlankSec)) < 1e-9)
+    % Jittered intervals are estimated at their mean, so compare the
+    % estimate against the sequence with each interval at that mean.
+    expectedSec = sequence.estimatedDurationSec + ...
+        cfg.display.preRunBlankSec + cfg.display.postRunBlankSec;
+    if isfield(cfg.stimulus, 'interStimulusSec')
+        expectedSec = expectedSec - sum(sequence.trials.interStimulusSec) + ...
+            height(sequence.trials)*mean(cfg.stimulus.interStimulusSec);
+    end
+    assert(abs(estimate.durationSec - expectedSec) < 1e-9)
     assert(sequence.ttlMode=="onset_frame_pulse")
     fprintf('%s: %d trials/patterns, %.3f s, TTL=%s\n', ...
         protocol, height(sequence.trials), sequence.estimatedDurationSec, ...
@@ -42,6 +48,47 @@ assert(sequence.ttlMode=="onset_frame_pulse")
 flashed.stimulus.interStimulusSec = 0.1;
 sequence = vstim.generateSequence(flashed, 60);
 assert(sequence.ttlMode=="onset_frame_pulse")
+
+% interStimulusSec is a [minimum maximum] range. Equal values are fixed,
+% unequal values are uniform jitter reproducible from the session seed.
+for protocol = ["Flashed bars", "Fast Gabor tiling", ...
+        "Targeted Gabor grid", "Gabor + inverse stimuli"]
+    cfg = vstim.defaultConfig(protocol);
+    assert(isequal(cfg.stimulus.interStimulusSec, [0.45 0.55]))
+    cfg.stimulus.interStimulusSec = [1 1];
+    sequence = vstim.generateSequence(cfg, 60);
+    assert(all(sequence.trials.interStimulusSec == 1))
+
+    cfg.stimulus.interStimulusSec = [0.5 1.5];
+    vstim.validateConfig(cfg);
+    jittered = vstim.generateSequence(cfg, 60);
+    isi = jittered.trials.interStimulusSec;
+    assert(all(isi >= 0.5 & isi <= 1.5) && numel(unique(isi)) > 1)
+    % Jitter is drawn after trial order, so the same seed keeps the order.
+    assert(isequal(removevars(jittered.trials, 'interStimulusSec'), ...
+        removevars(sequence.trials, 'interStimulusSec')))
+    repeated = vstim.generateSequence(cfg, 60);
+    assert(isequal(isi, repeated.trials.interStimulusSec))
+    estimate = vstim.estimateDuration(cfg, 60);
+    expectedSec = sum(jittered.trials.durationSec) + ...
+        height(jittered.trials)*1 + ...
+        cfg.display.preRunBlankSec + cfg.display.postRunBlankSec;
+    assert(abs(estimate.durationSec - expectedSec) < 1e-9)
+end
+legacy = vstim.defaultConfig("Flashed bars");
+legacy.stimulus.interStimulusSec = 0.2;
+vstim.validateConfig(legacy);
+sequence = vstim.generateSequence(legacy, 60);
+assert(all(sequence.trials.interStimulusSec == 0.2))
+for invalidSec = {[1 0.5], [-0.1 0.2], [0.1 0.2 0.3], [0 Inf]}
+    legacy.stimulus.interStimulusSec = invalidSec{1};
+    try
+        vstim.validateConfig(legacy);
+        error('vstim:TestFailed', 'Invalid interval range was accepted.')
+    catch err
+        assert(err.identifier == "vstim:InvalidInterStimulusRange")
+    end
+end
 
 % Flashed bars use the same mapping rectangle as moving bars and retain
 % their requested width even when their center lies on a region edge.
